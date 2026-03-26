@@ -1,11 +1,1853 @@
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, session, shell } = require("electron");
+const { spawn } = require("child_process");
+const fsp = require("fs/promises");
 const path = require("path");
 
 const isDev = !app.isPackaged;
 const shouldOpenDevTools = process.env.ELECTRON_OPEN_DEVTOOLS === "1";
+const MAX_LOG_LINES = 500;
+const DAYZ_WORKSPACE_FILE = "dayz-workspace.json";
+const DAYZ_INIT_START_MARKER = "// >>> DAYZ TOOLS INIT GENERATOR BEGIN";
+const DAYZ_INIT_END_MARKER = "// <<< DAYZ TOOLS INIT GENERATOR END";
+
+let serverProcess = null;
+let serverRuntime = createRuntimeSnapshot();
+let logSequence = 0;
+
+function createDefaultInitGeneratorState() {
+  return {
+    weather: {
+      mode: "fixed",
+      disableDynamicWeather: true,
+      overcast: "0.1",
+      overcastMin: "0.0",
+      overcastMax: "0.35",
+      rain: "0.0",
+      rainMin: "0.0",
+      rainMax: "0.2",
+      fog: "0.02",
+      fogMin: "0.0",
+      fogMax: "0.1",
+      wind: "8",
+      windMin: "0",
+      windMax: "18",
+      storm: "0.0",
+      stormMin: "0.0",
+      stormMax: "0.2",
+    },
+    spawn: {
+      mode: "random",
+      fixedPosition: "7500 0 7500",
+      presetPointName: "NWAF",
+      presetPointsText: "NWAF|4700 0 10300\nTisy|1600 0 14100\nDev Coast|13100 0 8300",
+      nearObjectClassname: "",
+      nearObjectAnchor: "7500 0 7500",
+      nearObjectRadius: "150",
+      nearObjectOffset: "2 0 2",
+    },
+    loadout: {
+      body: "TShirt_Black",
+      legs: "CargoPants_Black",
+      feet: "AthleticShoes_Black",
+      backpack: "AliceBag_Black",
+      vest: "",
+      headgear: "",
+      gloves: "",
+      primaryWeapon: "",
+      secondaryWeapon: "",
+      meleeWeapon: "FirefighterAxe",
+      weaponAttachments: "",
+      inventoryItems: "BandageDressing\nCompass\nMap",
+      magazines: "",
+      foodWater: "Canteen\nTacticalBaconCan",
+      medical: "BandageDressing\nTetracyclineAntibiotics",
+      extraItems: "",
+    },
+    helpers: {
+      fillStats: true,
+      clearAgents: true,
+      removeBleedingSources: true,
+      cleanBloodyHands: true,
+      fixedDateEnabled: false,
+      fixedDate: "2026-03-26 12:00",
+      grantInfluenzaResistance: true,
+      autoEquipLoadout: true,
+      giveTestTools: true,
+      testTools: "HuntingKnife\nHatchet\nShovel\nCombinationLock4\nGPSReceiver",
+    },
+    session: {
+      loginDelaySeconds: "15",
+      logoutDelaySeconds: "15",
+    },
+    modHooks: {
+      includeActiveModsComment: true,
+      manualItems: "",
+    },
+    loadoutPresets: [
+      {
+        id: "preset-light-debug",
+        name: "Light Debug",
+        loadout: {
+          body: "TShirt_Black",
+          legs: "CargoPants_Black",
+          feet: "AthleticShoes_Black",
+          backpack: "",
+          vest: "",
+          headgear: "",
+          gloves: "",
+          primaryWeapon: "",
+          secondaryWeapon: "",
+          meleeWeapon: "FirefighterAxe",
+          weaponAttachments: "",
+          inventoryItems: "BandageDressing\nCompass",
+          magazines: "",
+          foodWater: "Canteen",
+          medical: "BandageDressing",
+          extraItems: "",
+        },
+      },
+      {
+        id: "preset-builder",
+        name: "Builder",
+        loadout: {
+          body: "Hoodie_Black",
+          legs: "CargoPants_Black",
+          feet: "WorkingBoots_Black",
+          backpack: "AliceBag_Black",
+          vest: "",
+          headgear: "BaseballCap_Black",
+          gloves: "WorkingGloves_Black",
+          primaryWeapon: "",
+          secondaryWeapon: "",
+          meleeWeapon: "Hatchet",
+          weaponAttachments: "",
+          inventoryItems: "BoxOfNails\nWoodenPlank\nMetalWire\nCombinationLock4",
+          magazines: "",
+          foodWater: "Canteen\nTacticalBaconCan",
+          medical: "BandageDressing",
+          extraItems: "Shovel\nPickaxe",
+        },
+      },
+      {
+        id: "preset-combat",
+        name: "Combat Test",
+        loadout: {
+          body: "CombatJacket_Black",
+          legs: "CombatPants_Black",
+          feet: "MilitaryBoots_Black",
+          backpack: "AssaultBag_Black",
+          vest: "PlateCarrierVest",
+          headgear: "Mich2001Helmet",
+          gloves: "TacticalGloves_Black",
+          primaryWeapon: "M4A1",
+          secondaryWeapon: "FNX45",
+          meleeWeapon: "CombatKnife",
+          weaponAttachments: "M4_OEBttstck\nM4_PlasticHndgrd\nReflexOptic\nPistolSuppressor",
+          inventoryItems: "Rangefinder\nMap\nCompass\nBandageDressing",
+          magazines: "Mag_STANAG_30Rnd\nMag_STANAG_30Rnd\nMag_FNX45_15Rnd",
+          foodWater: "Canteen",
+          medical: "BandageDressing\nMorphine",
+          extraItems: "",
+        },
+      },
+    ],
+  };
+}
+
+function createRuntimeSnapshot(overrides = {}) {
+  return {
+    status: "stopped",
+    pid: null,
+    startedAt: null,
+    executablePath: null,
+    launchArgs: [],
+    logs: [],
+    ...overrides,
+  };
+}
+
+function normalizePath(value) {
+  if (!value || typeof value !== "string") {
+    return "";
+  }
+
+  return path.normalize(value);
+}
+
+async function pathExists(targetPath) {
+  try {
+    await fsp.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveServerExecutable(serverRoot) {
+  const normalizedRoot = normalizePath(serverRoot);
+
+  if (!normalizedRoot) {
+    return null;
+  }
+
+  const candidates = [
+    path.join(normalizedRoot, "DayZServer_x64.exe"),
+    path.join(normalizedRoot, "DayZServer.exe"),
+  ];
+
+  for (const candidate of candidates) {
+    if (await pathExists(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+async function resolveClientExecutable() {
+  const candidates = [
+    "C:\\Program Files (x86)\\Steam\\steamapps\\common\\DayZ\\DayZ_x64.exe",
+    "C:\\Program Files (x86)\\Steam\\steamapps\\common\\DayZ\\DayZ.exe",
+  ];
+
+  for (let code = 68; code <= 90; code += 1) {
+    const driveLetter = String.fromCharCode(code);
+    candidates.push(`${driveLetter}:\\SteamLibrary\\steamapps\\common\\DayZ\\DayZ_x64.exe`);
+    candidates.push(`${driveLetter}:\\SteamLibrary\\steamapps\\common\\DayZ\\DayZ.exe`);
+  }
+
+  for (const candidate of candidates) {
+    if (await pathExists(candidate)) {
+      return normalizePath(candidate);
+    }
+  }
+
+  return null;
+}
+
+function getDayzClientConfigPath() {
+  return path.join(app.getPath("documents"), "DayZ", "DayZ.cfg");
+}
+
+function getWorkspaceFilePath() {
+  return path.join(app.getPath("userData"), DAYZ_WORKSPACE_FILE);
+}
+
+async function readWorkspaceState() {
+  try {
+    const filePath = getWorkspaceFilePath();
+    const raw = await fsp.readFile(filePath, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return {
+      paths: {},
+      clientPath: "",
+      clientSettings: {
+        displayMode: "windowed",
+        resolution: "1920x1080",
+      },
+      enabledModPaths: [],
+      importedLocalModPaths: [],
+      serverConfigValues: {},
+      initGeneratorState: createDefaultInitGeneratorState(),
+    };
+  }
+}
+
+async function saveWorkspaceState(state) {
+  const filePath = getWorkspaceFilePath();
+  await fsp.mkdir(path.dirname(filePath), { recursive: true });
+  await fsp.writeFile(filePath, JSON.stringify(state, null, 2), "utf8");
+  return state;
+}
+
+async function resolveConfigPath(serverRoot) {
+  const normalizedRoot = normalizePath(serverRoot);
+
+  if (!normalizedRoot) {
+    return "";
+  }
+
+  const candidates = [
+    path.join(normalizedRoot, "serverDZ.cfg"),
+    path.join(normalizedRoot, "server.cfg"),
+  ];
+
+  for (const candidate of candidates) {
+    if (await pathExists(candidate)) {
+      return candidate;
+    }
+  }
+
+  return "";
+}
+
+async function detectServerPaths(serverRoot) {
+  const normalizedRoot = normalizePath(serverRoot);
+
+  if (!normalizedRoot) {
+    return {
+      serverRoot: "",
+      profiles: "",
+      keys: "",
+      battleye: "",
+      mpmissions: "",
+      configPath: "",
+      executablePath: null,
+      hasServerRoot: false,
+    };
+  }
+
+  const [executablePath, configPath] = await Promise.all([
+    resolveServerExecutable(normalizedRoot),
+    resolveConfigPath(normalizedRoot),
+  ]);
+
+  return {
+    serverRoot: normalizedRoot,
+    profiles: path.join(normalizedRoot, "profiles"),
+    keys: path.join(normalizedRoot, "keys"),
+    battleye: path.join(normalizedRoot, "battleye"),
+    mpmissions: path.join(normalizedRoot, "mpmissions"),
+    configPath,
+    executablePath,
+    hasServerRoot: await pathExists(normalizedRoot),
+  };
+}
+
+async function findAutoDetectedServerRoot() {
+  const candidates = [
+    "C:\\Program Files (x86)\\Steam\\steamapps\\common\\DayZServer",
+  ];
+
+  for (let code = 68; code <= 90; code += 1) {
+    const driveLetter = String.fromCharCode(code);
+    candidates.push(`${driveLetter}:\\SteamLibrary\\steamapps\\common\\DayZServer`);
+  }
+
+  for (const candidate of candidates) {
+    const executablePath = await resolveServerExecutable(candidate);
+
+    if (executablePath) {
+      return normalizePath(candidate);
+    }
+  }
+
+  return "";
+}
+
+async function autoDetectServerPaths() {
+  const serverRoot = await findAutoDetectedServerRoot();
+  return detectServerPaths(serverRoot);
+}
+
+function stripInlineComment(input) {
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
+  for (let index = 0; index < input.length - 1; index += 1) {
+    const current = input[index];
+    const next = input[index + 1];
+
+    if (current === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+
+    if (current === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+
+    if (!inSingleQuote && !inDoubleQuote && current === "/" && next === "/") {
+      return input.slice(0, index).trimEnd();
+    }
+  }
+
+  return input.trimEnd();
+}
+
+function normalizeCfgValue(value) {
+  const withoutComment = stripInlineComment(String(value ?? ""))
+    .replace(/;$/, "")
+    .trim();
+
+  if (
+    (withoutComment.startsWith('"') && withoutComment.endsWith('"')) ||
+    (withoutComment.startsWith("'") && withoutComment.endsWith("'"))
+  ) {
+    return withoutComment.slice(1, -1);
+  }
+
+  return withoutComment;
+}
+
+function parseSimpleCfg(text) {
+  const parsed = {};
+
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+
+    if (!trimmed || trimmed.startsWith("//")) {
+      continue;
+    }
+
+    const match = trimmed.match(/^([A-Za-z0-9_]+)\s*=\s*(.+?);?$/);
+
+    if (match) {
+      parsed[match[1]] = normalizeCfgValue(match[2]);
+    }
+  }
+
+  return parsed;
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeInitGeneratorState(input = {}) {
+  const base = createDefaultInitGeneratorState();
+
+  return {
+    ...base,
+    ...input,
+    weather: { ...base.weather, ...(input.weather ?? {}) },
+    spawn: { ...base.spawn, ...(input.spawn ?? {}) },
+    loadout: { ...base.loadout, ...(input.loadout ?? {}) },
+    helpers: { ...base.helpers, ...(input.helpers ?? {}) },
+    session: { ...base.session, ...(input.session ?? {}) },
+    modHooks: { ...base.modHooks, ...(input.modHooks ?? {}) },
+    loadoutPresets:
+      Array.isArray(input.loadoutPresets) && input.loadoutPresets.length > 0
+        ? input.loadoutPresets.map((preset) => ({
+            ...preset,
+            loadout: { ...base.loadout, ...(preset.loadout ?? {}) },
+          }))
+        : cloneJson(base.loadoutPresets),
+  };
+}
+
+function getMissionGlobalsPath(missionPath) {
+  return path.join(normalizePath(missionPath), "db", "globals.xml");
+}
+
+async function readMissionSessionSettings(missionPath) {
+  const normalizedMissionPath = normalizePath(missionPath);
+  const globalsPath = getMissionGlobalsPath(normalizedMissionPath);
+  const raw = await readOptionalFile(globalsPath);
+  const defaults = createDefaultInitGeneratorState().session;
+
+  if (!raw) {
+    return {
+      missionPath: normalizedMissionPath,
+      globalsPath,
+      loginDelaySeconds: defaults.loginDelaySeconds,
+      logoutDelaySeconds: defaults.logoutDelaySeconds,
+    };
+  }
+
+  const readValue = (name, fallback) => {
+    const match = raw.match(new RegExp(`<var\\s+name="${name}"\\s+type="[^"]+"\\s+value="([^"]+)"\\s*/>`, "i"));
+    return match?.[1] ?? fallback;
+  };
+
+  return {
+    missionPath: normalizedMissionPath,
+    globalsPath,
+    loginDelaySeconds: readValue("TimeLogin", defaults.loginDelaySeconds),
+    logoutDelaySeconds: readValue("TimeLogout", defaults.logoutDelaySeconds),
+  };
+}
+
+async function applyMissionSessionSettings(missionPath, sessionSettings = {}) {
+  const normalizedMissionPath = normalizePath(missionPath);
+  const globalsPath = getMissionGlobalsPath(normalizedMissionPath);
+  const currentRaw = (await readOptionalFile(globalsPath)) || "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<variables>\n</variables>\n";
+  const nextValues = {
+    TimeLogin: String(sessionSettings.loginDelaySeconds ?? createDefaultInitGeneratorState().session.loginDelaySeconds),
+    TimeLogout: String(sessionSettings.logoutDelaySeconds ?? createDefaultInitGeneratorState().session.logoutDelaySeconds),
+  };
+
+  let nextRaw = currentRaw;
+
+  for (const [key, value] of Object.entries(nextValues)) {
+    const pattern = new RegExp(`(<var\\s+name="${key}"\\s+type="[^"]+"\\s+value=")([^"]+)("\\s*/>)`, "i");
+
+    if (pattern.test(nextRaw)) {
+      nextRaw = nextRaw.replace(pattern, `$1${value}$3`);
+      continue;
+    }
+
+    nextRaw = nextRaw.replace("</variables>", `    <var name="${key}" type="0" value="${value}"/>\n</variables>`);
+  }
+
+  await fsp.mkdir(path.dirname(globalsPath), { recursive: true });
+  await fsp.writeFile(globalsPath, nextRaw, "utf8");
+
+  return readMissionSessionSettings(normalizedMissionPath);
+}
+
+function formatTimestampFilePart() {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+}
+
+function escapeEnforceString(value) {
+  return String(value ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"');
+}
+
+function splitClassnameList(value) {
+  return [...new Set(
+    String(value ?? "")
+      .split(/[\r\n,;]+/)
+      .map((item) => item.trim())
+      .filter(Boolean),
+  )];
+}
+
+function parseNumberValue(value, fallback, min = null, max = null) {
+  const parsed = Number.parseFloat(String(value ?? ""));
+  let next = Number.isFinite(parsed) ? parsed : fallback;
+
+  if (min !== null) {
+    next = Math.max(min, next);
+  }
+
+  if (max !== null) {
+    next = Math.min(max, next);
+  }
+
+  return next;
+}
+
+function formatNumberLiteral(value) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function sanitizeVectorString(value, fallback = "7500 0 7500") {
+  const matches = String(value ?? "")
+    .trim()
+    .match(/-?\d+(?:\.\d+)?/g);
+
+  if (!matches || matches.length < 3) {
+    return fallback;
+  }
+
+  return matches
+    .slice(0, 3)
+    .map((part) => formatNumberLiteral(Number.parseFloat(part)))
+    .join(" ");
+}
+
+function parsePresetPoints(text) {
+  return String(text ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [namePart, positionPart] = line.includes("|") ? line.split("|") : line.split("=");
+      return {
+        name: String(namePart ?? "").trim(),
+        position: sanitizeVectorString(positionPart ?? "", "7500 0 7500"),
+      };
+    })
+    .filter((entry) => entry.name);
+}
+
+function parseFixedDate(value) {
+  const match = String(value ?? "")
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}):(\d{2}))?$/);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    year: Number.parseInt(match[1], 10),
+    month: Number.parseInt(match[2], 10),
+    day: Number.parseInt(match[3], 10),
+    hour: Number.parseInt(match[4] ?? "12", 10),
+    minute: Number.parseInt(match[5] ?? "0", 10),
+  };
+}
+
+async function readMissionInitState(missionPath) {
+  const normalizedMissionPath = normalizePath(missionPath);
+
+  if (!normalizedMissionPath) {
+    throw new Error("Mission path is required for init.c generation.");
+  }
+
+  if (!(await pathExists(normalizedMissionPath))) {
+    throw new Error(`Mission folder was not found: ${normalizedMissionPath}`);
+  }
+
+  const initPath = path.join(normalizedMissionPath, "init.c");
+  const hasExistingInit = await pathExists(initPath);
+  const raw = hasExistingInit ? await fsp.readFile(initPath, "utf8") : "";
+
+  return {
+    missionPath: normalizedMissionPath,
+    initPath,
+    hasExistingInit,
+    raw,
+  };
+}
+
+function replaceManagedInitBlock(raw, generatedBlock) {
+  const startIndex = raw.indexOf(DAYZ_INIT_START_MARKER);
+  const endIndex = raw.indexOf(DAYZ_INIT_END_MARKER);
+
+  if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
+    return null;
+  }
+
+  const suffixIndex = endIndex + DAYZ_INIT_END_MARKER.length;
+  return `${raw.slice(0, startIndex)}${generatedBlock}${raw.slice(suffixIndex)}`;
+}
+
+function buildWeatherLines(state) {
+  const weather = state.weather;
+  const fixedMode = weather.mode !== "random";
+  const overcastMin = parseNumberValue(weather.overcastMin, 0, 0, 1);
+  const overcastMax = parseNumberValue(weather.overcastMax, 0.35, 0, 1);
+  const rainMin = parseNumberValue(weather.rainMin, 0, 0, 1);
+  const rainMax = parseNumberValue(weather.rainMax, 0.2, 0, 1);
+  const fogMin = parseNumberValue(weather.fogMin, 0, 0, 1);
+  const fogMax = parseNumberValue(weather.fogMax, 0.1, 0, 1);
+  const windMin = parseNumberValue(weather.windMin, 0, 0, 100);
+  const windMax = parseNumberValue(weather.windMax, 18, 0, 100);
+  const stormMin = parseNumberValue(weather.stormMin, 0, 0, 1);
+  const stormMax = parseNumberValue(weather.stormMax, 0.2, 0, 1);
+  const fixedOvercast = parseNumberValue(weather.overcast, 0.1, 0, 1);
+  const fixedRain = parseNumberValue(weather.rain, 0, 0, 1);
+  const fixedFog = parseNumberValue(weather.fog, 0.02, 0, 1);
+  const fixedWind = parseNumberValue(weather.wind, 8, 0, 100);
+  const fixedStorm = parseNumberValue(weather.storm, 0, 0, 1);
+
+  const lines = [
+    "\tWeather weather = g_Game.GetWeather();",
+    "\tweather.MissionWeather(true);",
+    `\tweather.SetWeatherUpdateFreeze(${weather.disableDynamicWeather ? "true" : "false"});`,
+  ];
+
+  if (weather.disableDynamicWeather) {
+    lines.push(
+      "\tweather.GetOvercast().SetForecastChangeLimits(0.0, 0.0);",
+      "\tweather.GetRain().SetForecastChangeLimits(0.0, 0.0);",
+      "\tweather.GetFog().SetForecastChangeLimits(0.0, 0.0);",
+      "\tweather.GetOvercast().SetForecastTimeLimits(1800, 1800);",
+      "\tweather.GetRain().SetForecastTimeLimits(600, 600);",
+      "\tweather.GetFog().SetForecastTimeLimits(600, 600);",
+    );
+  }
+
+  if (fixedMode) {
+    lines.push(
+      `\tweather.GetOvercast().SetLimits(${formatNumberLiteral(fixedOvercast)}, ${formatNumberLiteral(fixedOvercast)});`,
+      `\tweather.GetRain().SetLimits(${formatNumberLiteral(fixedRain)}, ${formatNumberLiteral(fixedRain)});`,
+      `\tweather.GetFog().SetLimits(${formatNumberLiteral(fixedFog)}, ${formatNumberLiteral(fixedFog)});`,
+      `\tweather.GetOvercast().Set(${formatNumberLiteral(fixedOvercast)}, 0, 0);`,
+      `\tweather.GetRain().Set(${formatNumberLiteral(fixedRain)}, 0, 0);`,
+      `\tweather.GetFog().Set(${formatNumberLiteral(fixedFog)}, 0, 0);`,
+      `\tweather.SetWindMaximumSpeed(${formatNumberLiteral(fixedWind)});`,
+      `\tweather.SetWindFunctionParams(0.0, 0.0, ${formatNumberLiteral(Math.max(0.1, fixedWind > 0 ? 0.25 : 0.1))});`,
+      `\tweather.SetStorm(${formatNumberLiteral(fixedStorm)}, 0.85, 45);`,
+    );
+  } else {
+    lines.push(
+      `\tfloat dtOvercast = Math.RandomFloatInclusive(${formatNumberLiteral(overcastMin)}, ${formatNumberLiteral(overcastMax)});`,
+      `\tfloat dtRain = Math.RandomFloatInclusive(${formatNumberLiteral(rainMin)}, ${formatNumberLiteral(rainMax)});`,
+      `\tfloat dtFog = Math.RandomFloatInclusive(${formatNumberLiteral(fogMin)}, ${formatNumberLiteral(fogMax)});`,
+      `\tfloat dtWindMax = Math.RandomFloatInclusive(${formatNumberLiteral(windMin)}, ${formatNumberLiteral(windMax)});`,
+      `\tfloat dtStorm = Math.RandomFloatInclusive(${formatNumberLiteral(stormMin)}, ${formatNumberLiteral(stormMax)});`,
+      `\tweather.GetOvercast().SetLimits(${formatNumberLiteral(overcastMin)}, ${formatNumberLiteral(overcastMax)});`,
+      `\tweather.GetRain().SetLimits(${formatNumberLiteral(rainMin)}, ${formatNumberLiteral(rainMax)});`,
+      `\tweather.GetFog().SetLimits(${formatNumberLiteral(fogMin)}, ${formatNumberLiteral(fogMax)});`,
+      "\tweather.GetOvercast().Set(dtOvercast, 0, 0);",
+      "\tweather.GetRain().Set(dtRain, 0, 0);",
+      "\tweather.GetFog().Set(dtFog, 0, 0);",
+      "\tweather.SetWindMaximumSpeed(dtWindMax);",
+      "\tweather.SetWindFunctionParams(0.0, 1.0, 0.35);",
+      "\tweather.SetStorm(dtStorm, 0.85, 45);",
+    );
+  }
+
+  lines.push("\tweather.SetRainThresholds(0.6, 1.0, 30);");
+
+  return lines;
+}
+
+function buildDateLines(state) {
+  const parsedDate = state.helpers.fixedDateEnabled ? parseFixedDate(state.helpers.fixedDate) : null;
+
+  if (!parsedDate) {
+    return [];
+  }
+
+  return [
+    "\tint year, month, day, hour, minute;",
+    "\tGetGame().GetWorld().GetDate(year, month, day, hour, minute);",
+    `\tGetGame().GetWorld().SetDate(${parsedDate.year}, ${parsedDate.month}, ${parsedDate.day}, ${parsedDate.hour}, ${parsedDate.minute});`,
+  ];
+}
+
+function buildCreateCharacterLines(state) {
+  const spawn = state.spawn;
+  const fixedPosition = sanitizeVectorString(spawn.fixedPosition, "7500 0 7500");
+  const nearObjectAnchor = sanitizeVectorString(spawn.nearObjectAnchor, fixedPosition);
+  const nearObjectOffset = sanitizeVectorString(spawn.nearObjectOffset, "2 0 2");
+  const nearObjectRadius = parseNumberValue(spawn.nearObjectRadius, 150, 1, 5000);
+  const selectedPreset = parsePresetPoints(spawn.presetPointsText).find(
+    (point) => point.name.toLowerCase() === String(spawn.presetPointName ?? "").trim().toLowerCase(),
+  );
+
+  const lines = [
+    "\t\tvector spawnPosition = pos;",
+  ];
+
+  if (spawn.mode === "fixed") {
+    lines.push(`\t\tspawnPosition = "${fixedPosition}";`);
+  } else if (spawn.mode === "preset") {
+    lines.push(`\t\tspawnPosition = "${selectedPreset?.position ?? fixedPosition}";`);
+  } else if (spawn.mode === "near-object" && String(spawn.nearObjectClassname ?? "").trim()) {
+    lines.push(
+      "\t\tarray<Object> nearbyObjects = new array<Object>;",
+      "\t\tarray<CargoBase> proxyCargos = new array<CargoBase>;",
+      `\t\tGetGame().GetObjectsAtPosition3D("${nearObjectAnchor}", ${formatNumberLiteral(nearObjectRadius)}, nearbyObjects, proxyCargos);`,
+      `\t\tvector desiredOffset = "${nearObjectOffset}";`,
+      "\t\tforeach (Object nearbyObject : nearbyObjects)",
+      "\t\t{",
+      `\t\t\tif (nearbyObject && nearbyObject.GetType() == "${escapeEnforceString(spawn.nearObjectClassname.trim())}")`,
+      "\t\t\t{",
+      "\t\t\t\tspawnPosition = nearbyObject.GetPosition() + desiredOffset;",
+      "\t\t\t\tbreak;",
+      "\t\t\t}",
+      "\t\t}",
+    );
+  }
+
+  lines.push(
+    "\t\tEntity playerEnt;",
+    '\t\tplayerEnt = GetGame().CreatePlayer(identity, characterName, spawnPosition, 0, "NONE");',
+    "\t\tClass.CastTo(m_player, playerEnt);",
+    "\t\tGetGame().SelectPlayer(identity, m_player);",
+    "\t\treturn m_player;",
+  );
+
+  return lines;
+}
+
+function buildItemCreationLines(targetExpression, items, indent) {
+  const lines = [];
+
+  for (const item of items) {
+    lines.push(`${indent}DT_CreateInInventory(${targetExpression}, "${escapeEnforceString(item)}");`);
+  }
+
+  return lines;
+}
+
+function buildLoadoutLines(state, activeMods) {
+  const loadout = state.loadout;
+  const helpers = state.helpers;
+  const modHooks = state.modHooks;
+  const lines = [];
+
+  if (!helpers.autoEquipLoadout) {
+    return ["\t\t// Starter loadout auto-equip is disabled in the generator settings."];
+  }
+
+  const clothingAttachments = [
+    loadout.body,
+    loadout.legs,
+    loadout.feet,
+    loadout.backpack,
+    loadout.vest,
+    loadout.headgear,
+    loadout.gloves,
+  ].filter(Boolean);
+
+  for (const item of clothingAttachments) {
+    lines.push(`\t\tDT_CreateAttachment(player, "${escapeEnforceString(item)}");`);
+  }
+
+  if (loadout.primaryWeapon) {
+    lines.push(
+      `\t\tEntityAI primaryWeapon = DT_CreateInInventory(player, "${escapeEnforceString(loadout.primaryWeapon)}");`,
+    );
+
+    for (const attachment of splitClassnameList(loadout.weaponAttachments)) {
+      lines.push(`\t\tDT_CreateAttachment(primaryWeapon, "${escapeEnforceString(attachment)}");`);
+    }
+  } else {
+    lines.push("\t\tEntityAI primaryWeapon = null;");
+  }
+
+  if (loadout.secondaryWeapon) {
+    lines.push(
+      `\t\tEntityAI secondaryWeapon = DT_CreateInInventory(player, "${escapeEnforceString(loadout.secondaryWeapon)}");`,
+    );
+  } else {
+    lines.push("\t\tEntityAI secondaryWeapon = null;");
+  }
+
+  if (loadout.meleeWeapon) {
+    lines.push(`\t\tDT_CreateInInventory(player, "${escapeEnforceString(loadout.meleeWeapon)}");`);
+  }
+
+  lines.push(...buildItemCreationLines("player", splitClassnameList(loadout.inventoryItems), "\t\t"));
+  lines.push(...buildItemCreationLines("player", splitClassnameList(loadout.magazines), "\t\t"));
+  lines.push(...buildItemCreationLines("player", splitClassnameList(loadout.foodWater), "\t\t"));
+  lines.push(...buildItemCreationLines("player", splitClassnameList(loadout.medical), "\t\t"));
+  lines.push(...buildItemCreationLines("player", splitClassnameList(loadout.extraItems), "\t\t"));
+
+  if (helpers.giveTestTools) {
+    lines.push(...buildItemCreationLines("player", splitClassnameList(helpers.testTools), "\t\t"));
+  }
+
+  const manualModItems = splitClassnameList(modHooks.manualItems);
+  if (manualModItems.length > 0) {
+    lines.push("\t\t// Optional mod hook items");
+    lines.push(...buildItemCreationLines("player", manualModItems, "\t\t"));
+  }
+
+  if (modHooks.includeActiveModsComment && activeMods.length > 0) {
+    lines.push("\t\t// Active mods at generation time:");
+    for (const mod of activeMods) {
+      lines.push(`\t\t// - ${escapeEnforceString(mod.name)} (${escapeEnforceString(mod.source)})`);
+    }
+  }
+
+  return lines;
+}
+
+function buildHelperLines(state) {
+  const helpers = state.helpers;
+  const lines = ["\t\tif (!player) return;"];
+
+  if (helpers.fillStats) {
+    lines.push(
+      '\t\tplayer.SetHealth("", "", player.GetMaxHealth("", ""));',
+      '\t\tplayer.SetHealth("", "Blood", player.GetMaxHealth("", "Blood"));',
+      '\t\tplayer.SetHealth("", "Shock", player.GetMaxHealth("", "Shock"));',
+      "\t\tplayer.GetStatWater().Set(player.GetStatWater().GetMax());",
+      "\t\tplayer.GetStatEnergy().Set(player.GetStatEnergy().GetMax());",
+    );
+  }
+
+  if (helpers.clearAgents) {
+    lines.push("\t\tplayer.RemoveAllAgents();");
+  }
+
+  if (helpers.removeBleedingSources) {
+    lines.push(
+      "\t\tif (player.GetBleedingManagerServer())",
+      "\t\t\tplayer.GetBleedingManagerServer().RemoveAllSources();",
+    );
+  }
+
+  if (helpers.cleanBloodyHands) {
+    lines.push(
+      "\t\tPluginLifespan moduleLifespan = PluginLifespan.Cast(GetPlugin(PluginLifespan));",
+      "\t\tif (moduleLifespan)",
+      "\t\t\tmoduleLifespan.UpdateBloodyHandsVisibilityEx(player, eBloodyHandsTypes.CLEAN);",
+      "\t\tplayer.ClearBloodyHandsPenaltyChancePerAgent(eAgents.SALMONELLA);",
+    );
+  }
+
+  if (helpers.grantInfluenzaResistance) {
+    lines.push("\t\tplayer.SetTemporaryResistanceToAgent(eAgents.INFLUENZA, 1800);");
+  }
+
+  return lines;
+}
+
+function generateInitContent(request) {
+  const state = normalizeInitGeneratorState(request.state);
+  const activeMods = Array.isArray(request.activeMods) ? request.activeMods : [];
+  const dateLines = buildDateLines(state);
+  const weatherLines = buildWeatherLines(state);
+  const createCharacterLines = buildCreateCharacterLines(state);
+  const loadoutLines = buildLoadoutLines(state, activeMods);
+  const helperLines = buildHelperLines(state);
+
+  const lines = [
+    DAYZ_INIT_START_MARKER,
+    "// Generated by DayZ Tools Launcher.",
+    "",
+    "void main()",
+    "{",
+    "\tHive ce = CreateHive();",
+    "\tif ( ce )",
+    "\t\tce.InitOffline();",
+    "",
+    ...dateLines,
+    ...(dateLines.length > 0 ? [""] : []),
+    ...weatherLines,
+    "}",
+    "",
+    "class DTToolsMission: MissionServer",
+    "{",
+    "\tprotected EntityAI DT_CreateAttachment(EntityAI parent, string classname)",
+    "\t{",
+    '\t\tif (!parent || classname == "")',
+    "\t\t\treturn null;",
+    "\t\treturn parent.GetInventory().CreateAttachment(classname);",
+    "\t}",
+    "",
+    "\tprotected EntityAI DT_CreateInInventory(EntityAI parent, string classname)",
+    "\t{",
+    '\t\tif (!parent || classname == "")',
+    "\t\t\treturn null;",
+    "\t\treturn parent.GetInventory().CreateInInventory(classname);",
+    "\t}",
+    "",
+    "\toverride PlayerBase CreateCharacter(PlayerIdentity identity, vector pos, ParamsReadContext ctx, string characterName)",
+    "\t{",
+    ...createCharacterLines,
+    "\t}",
+    "",
+    "\tvoid DT_ApplyHelpers(PlayerBase player)",
+    "\t{",
+    ...helperLines,
+    "\t}",
+    "",
+    "\toverride void StartingEquipSetup(PlayerBase player, bool clothesChosen)",
+    "\t{",
+    ...loadoutLines,
+    "",
+    "\t\tDT_ApplyHelpers(player);",
+    "\t}",
+    "};",
+    "",
+    "Mission CreateCustomMission(string path)",
+    "{",
+    "\treturn new DTToolsMission();",
+    "}",
+    DAYZ_INIT_END_MARKER,
+  ];
+
+  return lines.join("\r\n");
+}
+
+async function previewInitGenerator(request) {
+  const missionState = await readMissionInitState(request.missionPath);
+  const generatedBlock = generateInitContent(request);
+  const replacedManagedBlock = missionState.hasExistingInit
+    ? replaceManagedInitBlock(missionState.raw, generatedBlock)
+    : null;
+
+  return {
+    missionPath: missionState.missionPath,
+    initPath: missionState.initPath,
+    preview: replacedManagedBlock ?? generatedBlock,
+    hasExistingInit: missionState.hasExistingInit,
+    usesManagedBlock: Boolean(replacedManagedBlock),
+    mode: !missionState.hasExistingInit
+      ? "create"
+      : replacedManagedBlock
+        ? "managed-update"
+        : "full-write",
+  };
+}
+
+async function applyInitGenerator(request) {
+  const preview = await previewInitGenerator(request);
+  let backupPath = null;
+
+  if (preview.hasExistingInit) {
+    backupPath = `${preview.initPath}.backup-${formatTimestampFilePart()}`;
+    await fsp.copyFile(preview.initPath, backupPath);
+  }
+
+  await fsp.mkdir(path.dirname(preview.initPath), { recursive: true });
+  await fsp.writeFile(preview.initPath, preview.preview, "utf8");
+  await applyMissionSessionSettings(request.missionPath, request.state?.session ?? {});
+
+  return {
+    ...preview,
+    backupPath,
+  };
+}
+
+function parseModArgumentValue(value) {
+  const normalizedValue = normalizeCfgValue(value);
+
+  return normalizedValue
+    .split(";")
+    .map((token) => normalizePath(token.trim().replace(/^"+|"+$/g, "")))
+    .filter(Boolean);
+}
+
+const MANAGED_SERVER_CONFIG_KEYS = [
+  "hostname",
+  "password",
+  "template",
+  "maxPlayers",
+  "verifySignatures",
+  "disableVoN",
+  "serverTime",
+  "serverTimePersistent",
+  "serverTimeAcceleration",
+  "serverNightTimeAcceleration",
+  "instanceId",
+  "storageAutoFix",
+  "loginQueueConcurrentPlayers",
+  "adminLogPlayerHitsOnly",
+  "guaranteedUpdates",
+];
+
+function formatServerConfigValue(key, value) {
+  const stringValue = String(value ?? "").trim();
+
+  if (["verifySignatures", "disableVoN", "storageAutoFix", "adminLogPlayerHitsOnly"].includes(key)) {
+    const normalized = stringValue.toLowerCase();
+    return ["1", "true", "yes"].includes(normalized) ? "1" : "0";
+  }
+
+  if (["hostname", "password", "template", "serverTime"].includes(key)) {
+    return `"${stringValue.replaceAll('"', '\\"')}"`;
+  }
+
+  return stringValue;
+}
+
+function applyManagedServerConfig(raw, values) {
+  const lines = raw ? raw.split(/\r?\n/) : [];
+  const remainingKeys = new Set(MANAGED_SERVER_CONFIG_KEYS);
+  const nextLines = lines.map((line) => {
+    const commentIndex = (() => {
+      let inSingleQuote = false;
+      let inDoubleQuote = false;
+
+      for (let index = 0; index < line.length - 1; index += 1) {
+        const current = line[index];
+        const next = line[index + 1];
+
+        if (current === '"' && !inSingleQuote) {
+          inDoubleQuote = !inDoubleQuote;
+          continue;
+        }
+
+        if (current === "'" && !inDoubleQuote) {
+          inSingleQuote = !inSingleQuote;
+          continue;
+        }
+
+        if (!inSingleQuote && !inDoubleQuote && current === "/" && next === "/") {
+          return index;
+        }
+      }
+
+      return -1;
+    })();
+    const comment = commentIndex >= 0 ? line.slice(commentIndex).trimEnd() : "";
+    const body = commentIndex >= 0 ? line.slice(0, commentIndex).trimEnd() : line;
+    const match = body.match(/^(\s*)([A-Za-z0-9_]+)(\s*=\s*)(.+?)(\s*;?\s*)$/);
+
+    if (!match) {
+      return line;
+    }
+
+    const [, indent, key, separator] = match;
+
+    if (!remainingKeys.has(key)) {
+      return line;
+    }
+
+    remainingKeys.delete(key);
+    const nextLine = `${indent}${key}${separator}${formatServerConfigValue(key, values[key])};`;
+    return comment ? `${nextLine} ${comment}` : nextLine;
+  });
+
+  for (const key of remainingKeys) {
+    nextLines.push(`${key} = ${formatServerConfigValue(key, values[key])};`);
+  }
+
+  return nextLines.join("\n").trimEnd() + "\n";
+}
+
+function applyClientDisplayConfig(raw, options = {}) {
+  const lines = raw ? raw.split(/\r?\n/) : [];
+  const width = Number.parseInt(String(options.resolutionWidth || 0), 10);
+  const height = Number.parseInt(String(options.resolutionHeight || 0), 10);
+  const windowed = options.displayMode === "fullscreen" ? "0" : "1";
+  const replacements = new Map([
+    ["Windowed", windowed],
+    ["WindowWidth", Number.isFinite(width) && width > 0 ? String(width) : ""],
+    ["WindowHeight", Number.isFinite(height) && height > 0 ? String(height) : ""],
+  ]);
+  const seenKeys = new Set();
+
+  const nextLines = lines.map((line) => {
+    const match = line.match(/^(\s*)(Windowed|WindowWidth|WindowHeight)(\s*=\s*)(.+?)(;?\s*)$/);
+
+    if (!match) {
+      return line;
+    }
+
+    const [, indent, key, separator, , suffix] = match;
+    const nextValue = replacements.get(key);
+
+    if (!nextValue) {
+      return line;
+    }
+
+    seenKeys.add(key);
+    return `${indent}${key}${separator}${nextValue};`;
+  });
+
+  for (const [key, value] of replacements.entries()) {
+    if (!value || seenKeys.has(key)) {
+      continue;
+    }
+
+    nextLines.push(`${key}=${value};`);
+  }
+
+  return nextLines.join("\n").trimEnd() + "\n";
+}
+
+async function writeDayzClientDisplayConfig(options = {}) {
+  const configPath = getDayzClientConfigPath();
+  const currentRaw = await readOptionalFile(configPath);
+  const nextRaw = applyClientDisplayConfig(currentRaw || "", options);
+
+  await fsp.mkdir(path.dirname(configPath), { recursive: true });
+  await fsp.writeFile(configPath, nextRaw, "utf8");
+}
+
+function extractModTokensFromText(text) {
+  const modTokens = [];
+  const regex = /-mod=("[^"]+"|'[^']+'|[^\s]+)/gi;
+
+  for (const match of text.matchAll(regex)) {
+    modTokens.push(...parseModArgumentValue(match[1]));
+  }
+
+  return [...new Set(modTokens)];
+}
+
+async function readOptionalFile(filePath) {
+  try {
+    return await fsp.readFile(filePath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function parseWorkshopManifestItems(text) {
+  const items = new Map();
+  const lines = text.split(/\r?\n/);
+  let inInstalledBlock = false;
+  let installedDepth = 0;
+  let pendingWorkshopId = "";
+  let currentWorkshopId = "";
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      continue;
+    }
+
+    if (!inInstalledBlock) {
+      if (trimmed === '"WorkshopItemsInstalled"') {
+        inInstalledBlock = true;
+      }
+      continue;
+    }
+
+    if (trimmed === "{") {
+      installedDepth += 1;
+
+      if (installedDepth === 2 && pendingWorkshopId) {
+        currentWorkshopId = pendingWorkshopId;
+        items.set(currentWorkshopId, {});
+        pendingWorkshopId = "";
+      }
+
+      continue;
+    }
+
+    if (trimmed === "}") {
+      if (installedDepth === 2) {
+        currentWorkshopId = "";
+      }
+
+      installedDepth -= 1;
+
+      if (installedDepth <= 0) {
+        break;
+      }
+
+      continue;
+    }
+
+    const pairMatch = trimmed.match(/^"([^"]+)"\s*"([^"]*)"$/);
+    const singleValueMatch = trimmed.match(/^"(\d+)"$/);
+
+    if (installedDepth === 1 && singleValueMatch) {
+      pendingWorkshopId = singleValueMatch[1];
+      continue;
+    }
+
+    if (installedDepth === 2 && pairMatch && currentWorkshopId) {
+      const currentItem = items.get(currentWorkshopId);
+      currentItem[pairMatch[1].toLowerCase()] = pairMatch[2];
+    }
+  }
+
+  return items;
+}
+
+async function readWorkshopManifest(workshopRoot) {
+  const manifestPath = path.join(workshopRoot, "..", "..", "appworkshop_221100.acf");
+  const rawManifest = await readOptionalFile(manifestPath);
+
+  if (!rawManifest) {
+    return new Map();
+  }
+
+  return parseWorkshopManifestItems(rawManifest);
+}
+
+function normalizeWorkshopTimestamp(value) {
+  if (!value) {
+    return "";
+  }
+
+  const unixSeconds = Number.parseInt(String(value), 10);
+
+  if (!Number.isFinite(unixSeconds) || unixSeconds <= 0) {
+    return "";
+  }
+
+  return new Date(unixSeconds * 1000).toISOString();
+}
+
+function pickFirstNonEmpty(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return "";
+}
+
+async function collectDirectoryStats(rootPath) {
+  let totalSize = 0;
+  let createdAt = null;
+  let updatedAt = null;
+  let pboCount = 0;
+  let signedPboCount = 0;
+
+  async function walk(currentPath) {
+    let entries = [];
+
+    try {
+      entries = await fsp.readdir(currentPath, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    const names = entries.map((entry) => entry.name);
+
+    for (const entry of entries) {
+      const fullPath = path.join(currentPath, entry.name);
+      const stats = await fsp.stat(fullPath);
+
+      if (!createdAt || stats.birthtime < createdAt) {
+        createdAt = stats.birthtime;
+      }
+
+      if (!updatedAt || stats.mtime > updatedAt) {
+        updatedAt = stats.mtime;
+      }
+
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+        continue;
+      }
+
+      totalSize += stats.size;
+
+      if (entry.name.toLowerCase().endsWith(".pbo")) {
+        pboCount += 1;
+        const fileStem = entry.name.slice(0, -4).toLowerCase();
+        const hasBisign = names.some(
+          (name) =>
+            name.toLowerCase().startsWith(`${fileStem}.`) &&
+            name.toLowerCase().endsWith(".bisign"),
+        );
+
+        if (hasBisign) {
+          signedPboCount += 1;
+        }
+      }
+    }
+  }
+
+  await walk(rootPath);
+
+  return {
+    sizeBytes: totalSize,
+    createdAt: createdAt ? createdAt.toISOString() : "",
+    updatedAt: updatedAt ? updatedAt.toISOString() : "",
+    pboCount,
+    signedPboCount,
+    isFullySigned: pboCount > 0 && pboCount === signedPboCount,
+  };
+}
+
+async function parseDayzMod(modRoot, source, extras = {}) {
+  const { workshopItem, ...restExtras } = extras;
+  const folderName = path.basename(modRoot);
+  const [modCpp, metaCpp, hasAddonsDir, hasKeysDir, stats] = await Promise.all([
+    readOptionalFile(path.join(modRoot, "mod.cpp")),
+    readOptionalFile(path.join(modRoot, "meta.cpp")),
+    pathExists(path.join(modRoot, "addons")),
+    pathExists(path.join(modRoot, "keys")),
+    collectDirectoryStats(modRoot),
+  ]);
+
+  const modData = modCpp ? parseSimpleCfg(modCpp) : {};
+  const metaData = metaCpp ? parseSimpleCfg(metaCpp) : {};
+  const workshopUpdatedAt = normalizeWorkshopTimestamp(workshopItem?.latest_timeupdated || workshopItem?.timeupdated);
+  const author = pickFirstNonEmpty(
+    modData.author,
+    metaData.author,
+    modData.authors,
+    metaData.authors,
+    modData.creator,
+    metaData.creator,
+  );
+
+  return {
+    id: `${source.toLowerCase()}-${folderName.toLowerCase()}`,
+    name: folderName,
+    displayName: modData.name || metaData.name || folderName,
+    source,
+    state: hasAddonsDir ? "Detected" : "Incomplete",
+    enabled: false,
+    path: modRoot,
+    hasAddonsDir,
+    hasKeysDir,
+    version: modData.version || metaData.version || "",
+    author,
+    createdAt: source === "Workshop" ? "" : stats.createdAt,
+    updatedAt: source === "Workshop" ? workshopUpdatedAt || stats.updatedAt : stats.updatedAt,
+    sizeBytes: Number.parseInt(workshopItem?.size || "", 10) || stats.sizeBytes,
+    pboCount: stats.pboCount,
+    signedPboCount: stats.signedPboCount,
+    isFullySigned: stats.isFullySigned,
+    ...restExtras,
+  };
+}
+
+async function isLikelyModRoot(candidateRoot) {
+  const [hasModCpp, hasMetaCpp, hasAddonsDir] = await Promise.all([
+    pathExists(path.join(candidateRoot, "mod.cpp")),
+    pathExists(path.join(candidateRoot, "meta.cpp")),
+    pathExists(path.join(candidateRoot, "addons")),
+  ]);
+
+  return hasModCpp || hasMetaCpp || hasAddonsDir;
+}
+
+async function resolveWorkshopItemModRoots(workshopItemRoot) {
+  if (await isLikelyModRoot(workshopItemRoot)) {
+    return [workshopItemRoot];
+  }
+
+  let entries = [];
+
+  try {
+    entries = await fsp.readdir(workshopItemRoot, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const childDirs = entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(workshopItemRoot, entry.name));
+
+  const resolvedRoots = [];
+
+  for (const childDir of childDirs) {
+    if (await isLikelyModRoot(childDir)) {
+      resolvedRoots.push(childDir);
+    }
+  }
+
+  return resolvedRoots;
+}
+
+async function scanDayzServerMods(serverRoot) {
+  const normalizedRoot = normalizePath(serverRoot);
+
+  if (!normalizedRoot) {
+    return [];
+  }
+
+  let entries = [];
+
+  try {
+    entries = await fsp.readdir(normalizedRoot, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const modFolders = entries
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith("@"))
+    .map((entry) => path.join(normalizedRoot, entry.name));
+
+  const mods = await Promise.all(modFolders.map((modRoot) => parseDayzMod(modRoot, "Server Root")));
+  return mods.sort((left, right) => left.name.localeCompare(right.name, "en"));
+}
+
+async function resolveWorkshopRoots(serverRoot) {
+  const candidates = new Set([
+    "C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\221100",
+  ]);
+
+  for (let code = 67; code <= 90; code += 1) {
+    const driveLetter = String.fromCharCode(code);
+    candidates.add(`${driveLetter}:\\SteamLibrary\\steamapps\\workshop\\content\\221100`);
+  }
+
+  const normalizedRoot = normalizePath(serverRoot);
+
+  if (normalizedRoot) {
+    const parts = normalizedRoot.split(path.sep);
+
+    if (parts.length >= 4) {
+      const steamappsIndex = parts.findIndex((part) => part.toLowerCase() === "steamapps");
+
+      if (steamappsIndex >= 0) {
+        const base = parts.slice(0, steamappsIndex + 1).join(path.sep);
+        candidates.add(path.join(base, "workshop", "content", "221100"));
+      }
+    }
+  }
+
+  const roots = [];
+
+  for (const candidate of candidates) {
+    if (await pathExists(candidate)) {
+      roots.push(normalizePath(candidate));
+    }
+  }
+
+  return roots;
+}
+
+async function scanMissions(missionsRoot) {
+  const normalizedRoot = normalizePath(missionsRoot);
+
+  if (!normalizedRoot) {
+    return [];
+  }
+
+  let entries = [];
+
+  try {
+    entries = await fsp.readdir(normalizedRoot, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const missionDirs = entries.filter((entry) => entry.isDirectory());
+  const missions = await Promise.all(
+    missionDirs.map(async (entry) => {
+      const missionPath = path.join(normalizedRoot, entry.name);
+      const [hasInitFile, hasDbFolder, hasCfgEconomyCore, childEntries] = await Promise.all([
+        pathExists(path.join(missionPath, "init.c")),
+        pathExists(path.join(missionPath, "db")),
+        pathExists(path.join(missionPath, "cfgeconomycore.xml")),
+        fsp.readdir(missionPath, { withFileTypes: true }).catch(() => []),
+      ]);
+      const nameParts = entry.name.split(".");
+
+      return {
+        id: `mission-${entry.name.toLowerCase()}`,
+        name: entry.name,
+        path: missionPath,
+        mapName: nameParts[nameParts.length - 1] || entry.name,
+        hasInitFile,
+        hasDbFolder,
+        hasCfgEconomyCore,
+        fileCount: childEntries.length,
+      };
+    }),
+  );
+
+  return missions.sort((left, right) => left.name.localeCompare(right.name, "en"));
+}
+
+async function scanWorkshopMods(serverRoot) {
+  const workshopRoots = await resolveWorkshopRoots(serverRoot);
+  const mods = [];
+
+  for (const workshopRoot of workshopRoots) {
+    const workshopManifest = await readWorkshopManifest(workshopRoot);
+    let entries = [];
+
+    try {
+      entries = await fsp.readdir(workshopRoot, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    const workshopFolders = entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => ({
+        root: path.join(workshopRoot, entry.name),
+        workshopId: entry.name,
+      }));
+
+    for (const folder of workshopFolders) {
+      const modRoots = await resolveWorkshopItemModRoots(folder.root);
+      const workshopItem = workshopManifest.get(folder.workshopId) || null;
+
+      for (const modRoot of modRoots) {
+        const parsed = await parseDayzMod(modRoot, "Workshop", {
+          workshopId: folder.workshopId,
+          id: `workshop-${folder.workshopId}-${path.basename(modRoot).toLowerCase()}`,
+          workshopItem,
+        });
+        mods.push(parsed);
+      }
+    }
+  }
+
+  const uniqueByPath = new Map(mods.map((mod) => [mod.path.toLowerCase(), mod]));
+  return [...uniqueByPath.values()].sort((left, right) => left.name.localeCompare(right.name, "en"));
+}
+
+async function inspectModFolder(modRoot) {
+  const normalizedRoot = normalizePath(modRoot);
+
+  if (!normalizedRoot) {
+    throw new Error("Local mod path is required.");
+  }
+
+  if (!(await pathExists(normalizedRoot))) {
+    throw new Error("Selected mod folder does not exist.");
+  }
+
+  return parseDayzMod(normalizedRoot, "Local Import");
+}
+
+function broadcast(channel, payload) {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send(channel, payload);
+    }
+  }
+}
+
+function createLogEntry(line, level = "info") {
+  logSequence += 1;
+
+  return {
+    id: `${Date.now()}-${logSequence}`,
+    level,
+    line,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function pushServerLog(line, level = "info") {
+  const text = String(line ?? "");
+  const splitLines = text
+    .split(/\r?\n/)
+    .map((item) => item.trimEnd())
+    .filter(Boolean);
+
+  if (splitLines.length === 0) {
+    return;
+  }
+
+  for (const entryLine of splitLines) {
+    const entry = createLogEntry(entryLine, level);
+
+    serverRuntime.logs = [...serverRuntime.logs, entry].slice(-MAX_LOG_LINES);
+    broadcast("dayz:server-log", entry);
+  }
+}
+
+function setServerRuntime(patch) {
+  serverRuntime = {
+    ...serverRuntime,
+    ...patch,
+  };
+
+  broadcast("dayz:server-status", serverRuntime);
+  return serverRuntime;
+}
+
+function attachServerProcess(processHandle) {
+  processHandle.stdout?.on("data", (chunk) => {
+    pushServerLog(chunk, "stdout");
+  });
+
+  processHandle.stderr?.on("data", (chunk) => {
+    pushServerLog(chunk, "stderr");
+  });
+
+  processHandle.on("error", (error) => {
+    pushServerLog(`[launcher] Failed to start server: ${error.message}`, "stderr");
+    serverProcess = null;
+    setServerRuntime({
+      status: "stopped",
+      pid: null,
+      startedAt: null,
+      executablePath: null,
+    });
+  });
+
+  processHandle.on("exit", (code, signal) => {
+    pushServerLog(
+      `[launcher] Server process stopped${code !== null ? ` with code ${code}` : ""}${signal ? ` (${signal})` : ""}.`,
+      "info",
+    );
+
+    serverProcess = null;
+    setServerRuntime({
+      status: "stopped",
+      pid: null,
+    });
+  });
+}
+
+async function killServerProcess() {
+  if (!serverProcess || serverProcess.killed || serverProcess.exitCode !== null) {
+    serverProcess = null;
+    return setServerRuntime({
+      status: "stopped",
+      pid: null,
+      startedAt: null,
+      executablePath: null,
+    });
+  }
+
+  const currentProcess = serverProcess;
+  pushServerLog("[launcher] Stopping DayZ Server process...", "info");
+
+  await new Promise((resolve, reject) => {
+    const killer = spawn("taskkill", ["/pid", String(currentProcess.pid), "/t", "/f"], {
+      windowsHide: true,
+      stdio: "ignore",
+    });
+
+    killer.on("error", reject);
+    killer.on("exit", () => resolve());
+  });
+
+  return serverRuntime;
+}
+
+async function startServer(options = {}) {
+  const serverRoot = normalizePath(options.serverRoot);
+
+  if (!serverRoot) {
+    throw new Error("DayZ Server root path is required.");
+  }
+
+  if (serverProcess && serverProcess.exitCode === null) {
+    return serverRuntime;
+  }
+
+  const detected = await detectServerPaths(serverRoot);
+  const executablePath = detected.executablePath;
+
+  if (!executablePath) {
+    throw new Error("Could not find DayZServer_x64.exe or DayZServer.exe in the selected server root.");
+  }
+
+  const profilesPath = normalizePath(options.profilesPath) || detected.profiles;
+  const battleyePath = normalizePath(options.battleyePath) || detected.battleye;
+  const configPath = normalizePath(options.configPath) || detected.configPath;
+  const mods = Array.isArray(options.mods) ? options.mods.filter(Boolean) : [];
+
+  const args = [];
+
+  if (configPath) {
+    args.push(`-config=${configPath}`);
+  }
+
+  if (profilesPath) {
+    args.push(`-profiles=${profilesPath}`);
+  }
+
+  if (mods.length > 0) {
+    args.push(`-mod=${mods.join(";")}`);
+  }
+
+  if (battleyePath) {
+    args.push(`-BEpath=${battleyePath}`);
+  }
+
+  pushServerLog(`[launcher] Launching ${path.basename(executablePath)} from ${serverRoot}`, "info");
+  pushServerLog(`[launcher] Launch arguments: ${args.join(" ")}`, "info");
+
+  setServerRuntime({
+    status: "starting",
+    startedAt: new Date().toISOString(),
+    executablePath,
+    launchArgs: args,
+  });
+
+  serverProcess = spawn(executablePath, args, {
+    cwd: serverRoot,
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  attachServerProcess(serverProcess);
+
+  setServerRuntime({
+    status: "running",
+    pid: serverProcess.pid ?? null,
+    startedAt: new Date().toISOString(),
+    executablePath,
+    launchArgs: args,
+  });
+
+  return serverRuntime;
+}
+
+async function restartServer(options = {}) {
+  await killServerProcess();
+  return startServer(options);
+}
+
+async function launchDayzClient(options = {}) {
+  const executablePath = normalizePath(options.executablePath) || (await resolveClientExecutable());
+
+  if (!executablePath) {
+    throw new Error("Could not find DayZ client executable in the standard Steam locations.");
+  }
+
+  const serverAddress = options.serverAddress || "127.0.0.1";
+  const serverPort = String(options.serverPort || 2302);
+  const mods = Array.isArray(options.mods) ? options.mods.filter(Boolean).map(normalizePath) : [];
+  const displayMode = options.displayMode === "fullscreen" ? "fullscreen" : "windowed";
+  const resolutionWidth = Number.parseInt(String(options.resolutionWidth || 0), 10);
+  const resolutionHeight = Number.parseInt(String(options.resolutionHeight || 0), 10);
+  const args = [`-connect=${serverAddress}`, `-port=${serverPort}`];
+  const executableDir = path.dirname(executablePath);
+  const clientBattleyePath = path.join(executableDir, "BattlEye");
+
+  if (mods.length > 0) {
+    args.push(`-mod=${mods.join(";")}`);
+  }
+
+  if (Number.isFinite(resolutionWidth) && resolutionWidth > 0) {
+    args.push(`-width=${resolutionWidth}`);
+  }
+
+  if (Number.isFinite(resolutionHeight) && resolutionHeight > 0) {
+    args.push(`-height=${resolutionHeight}`);
+  }
+
+  args.push(displayMode === "fullscreen" ? "-fullscreen" : "-window");
+
+  if (await pathExists(clientBattleyePath)) {
+    args.push(`-BEpath=${clientBattleyePath}`);
+  }
+
+  await writeDayzClientDisplayConfig({
+    displayMode,
+    resolutionWidth,
+    resolutionHeight,
+  });
+
+  spawn(executablePath, args, {
+    cwd: executableDir,
+    detached: true,
+    windowsHide: false,
+    stdio: "ignore",
+  }).unref();
+
+  return {
+    executablePath,
+    args,
+  };
+}
+
+async function readServerConfig(configPath) {
+  const normalizedPath = normalizePath(configPath);
+
+  if (!normalizedPath) {
+    return {
+      path: "",
+      raw: "",
+      parsed: {},
+      modTokens: [],
+    };
+  }
+
+  if (!(await pathExists(normalizedPath))) {
+    return {
+      path: normalizedPath,
+      raw: "",
+      parsed: {},
+      modTokens: [],
+    };
+  }
+
+  const raw = await fsp.readFile(normalizedPath, "utf8");
+  const parsed = parseSimpleCfg(raw);
+
+  return {
+    path: normalizedPath,
+    raw,
+    parsed,
+    modTokens: extractModTokensFromText(raw),
+  };
+}
+
+async function writeServerConfig(options = {}) {
+  const serverRoot = normalizePath(options.serverRoot);
+  const explicitConfigPath = normalizePath(options.configPath);
+  const detectedConfigPath = explicitConfigPath || (serverRoot ? await resolveConfigPath(serverRoot) : "");
+  const targetPath = detectedConfigPath || (serverRoot ? path.join(serverRoot, "serverDZ.cfg") : "");
+
+  if (!targetPath) {
+    throw new Error("Could not resolve a target server config path.");
+  }
+
+  const currentSnapshot = await readServerConfig(targetPath);
+  const nextRaw = applyManagedServerConfig(currentSnapshot.raw, options.values ?? {});
+
+  await fsp.mkdir(path.dirname(targetPath), { recursive: true });
+  await fsp.writeFile(targetPath, nextRaw, "utf8");
+
+  return readServerConfig(targetPath);
+}
 
 function createWindow() {
-  const win = new BrowserWindow({
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [
+          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:3000; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://localhost:3000; font-src 'self' data:; connect-src 'self' ws://localhost:3000 http://localhost:3000 https://fonts.gstatic.com https://fonts.googleapis.com;",
+        ],
+      },
+    });
+  });
+
+  const mainWindow = new BrowserWindow({
     width: 1600,
     height: 1020,
     minWidth: 1240,
@@ -21,19 +1863,124 @@ function createWindow() {
   });
 
   if (isDev) {
-    win.loadURL("http://localhost:3000");
+    mainWindow.loadURL("http://localhost:3000");
     if (shouldOpenDevTools) {
-      win.webContents.openDevTools({ mode: "detach" });
+      mainWindow.webContents.openDevTools({ mode: "detach" });
     }
   } else {
-    win.loadFile(path.join(__dirname, "..", "out", "index.html"));
+    mainWindow.loadFile(path.join(__dirname, "..", "out", "index.html"));
   }
 
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
   });
 }
+
+ipcMain.handle("dayz:pick-folder", async (_event, options = {}) => {
+  const result = await dialog.showOpenDialog({
+    title: "Select Folder",
+    properties: ["openDirectory"],
+    defaultPath: normalizePath(options.defaultPath),
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+
+  return normalizePath(result.filePaths[0]);
+});
+
+ipcMain.handle("dayz:pick-executable", async (_event, options = {}) => {
+  const result = await dialog.showOpenDialog({
+    title: "Select Executable",
+    properties: ["openFile"],
+    defaultPath: normalizePath(options.defaultPath),
+    filters: [{ name: "Executable", extensions: ["exe"] }],
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+
+  return normalizePath(result.filePaths[0]);
+});
+
+ipcMain.handle("dayz:detect-client-executable", async () => {
+  return resolveClientExecutable();
+});
+
+ipcMain.handle("dayz:detect-server-paths", async (_event, serverRoot) => {
+  return detectServerPaths(serverRoot);
+});
+
+ipcMain.handle("dayz:auto-detect-server-paths", async () => {
+  return autoDetectServerPaths();
+});
+
+ipcMain.handle("dayz:get-runtime", async () => {
+  return serverRuntime;
+});
+
+ipcMain.handle("dayz:start-server", async (_event, options) => {
+  return startServer(options);
+});
+
+ipcMain.handle("dayz:stop-server", async () => {
+  return killServerProcess();
+});
+
+ipcMain.handle("dayz:restart-server", async (_event, options) => {
+  return restartServer(options);
+});
+
+ipcMain.handle("dayz:read-server-config", async (_event, configPath) => {
+  return readServerConfig(configPath);
+});
+
+ipcMain.handle("dayz:write-server-config", async (_event, options) => {
+  return writeServerConfig(options);
+});
+
+ipcMain.handle("dayz:scan-missions", async (_event, missionsRoot) => {
+  return scanMissions(missionsRoot);
+});
+
+ipcMain.handle("dayz:read-mission-session-settings", async (_event, missionPath) => {
+  return readMissionSessionSettings(missionPath);
+});
+
+ipcMain.handle("dayz:preview-init-generator", async (_event, request) => {
+  return previewInitGenerator(request);
+});
+
+ipcMain.handle("dayz:apply-init-generator", async (_event, request) => {
+  return applyInitGenerator(request);
+});
+
+ipcMain.handle("dayz:scan-mods", async (_event, serverRoot) => {
+  return scanDayzServerMods(serverRoot);
+});
+
+ipcMain.handle("dayz:scan-workshop-mods", async (_event, serverRoot) => {
+  return scanWorkshopMods(serverRoot);
+});
+
+ipcMain.handle("dayz:inspect-mod-folder", async (_event, modRoot) => {
+  return inspectModFolder(modRoot);
+});
+
+ipcMain.handle("dayz:launch-client", async (_event, options) => {
+  return launchDayzClient(options);
+});
+
+ipcMain.handle("dayz:get-workspace-state", async () => {
+  return readWorkspaceState();
+});
+
+ipcMain.handle("dayz:save-workspace-state", async (_event, state) => {
+  return saveWorkspaceState(state);
+});
 
 app.whenReady().then(() => {
   createWindow();

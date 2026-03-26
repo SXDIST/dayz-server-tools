@@ -5,11 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --panel: rgba(255, 255, 255, 0.08);
-  --panel-strong: rgba(255, 255, 255, 0.12);
   --border: oklch(0.922 0 0);
-  --glass: rgba(255, 255, 255, 0.065);
-  --glass-border: rgba(255, 255, 255, 0.12);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -46,9 +42,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter);
-  --font-mono: var(--font-mono);
-  --font-heading: var(--font-mono);
+  --font-sans: var(--font-jetbrains-mono);
+  --font-mono: var(--font-jetbrains-mono);
+  --font-heading: var(--font-jetbrains-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -101,44 +97,6 @@ body {
   -webkit-user-select: none;
 }
 
-.glass-panel {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.035)),
-    rgba(9, 17, 31, 0.5);
-  border: 1px solid var(--glass-border);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.15),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.03),
-    0 18px 60px rgba(2, 8, 23, 0.24);
-  backdrop-filter: blur(22px) saturate(130%);
-  -webkit-backdrop-filter: blur(22px) saturate(130%);
-}
-
-.glass-subtle {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
-    rgba(9, 17, 31, 0.38);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    0 10px 30px rgba(2, 8, 23, 0.14);
-  backdrop-filter: blur(18px) saturate(120%);
-  -webkit-backdrop-filter: blur(18px) saturate(120%);
-}
-
-@keyframes star-pulse {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: scale(1);
-  }
-
-  50% {
-    opacity: 1;
-    transform: scale(1.4);
-  }
-}
-
 @keyframes panel-fade {
   0% {
     opacity: 0;
@@ -151,60 +109,57 @@ body {
   }
 }
 
+@keyframes accordion-down {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+
+  to {
+    height: var(--radix-accordion-content-height);
+    opacity: 1;
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+    opacity: 1;
+  }
+
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+
+@keyframes star-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.9);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
 @keyframes shooting-star {
   0% {
     opacity: 0;
-    transform: rotate(315deg) translateX(0) scale(0.78);
+    transform: rotate(315deg) translateX(0) scale(0.88);
   }
 
-  10% {
+  8% {
     opacity: 1;
-    transform: rotate(315deg) translateX(-260px) scale(0.92);
-  }
-
-  85% {
-    opacity: 0.92;
-    transform: rotate(315deg) translateX(-2210px) scale(0.96);
   }
 
   100% {
     opacity: 0;
-    transform: rotate(315deg) translateX(-2600px) scale(1);
+    transform: rotate(315deg) translateX(-1800px) scale(1);
   }
-}
-
-.shooting-star {
-  width: 3px;
-  height: 3px;
-  border-radius: 999px;
-  background: #fff;
-  box-shadow:
-    0 0 0 3px rgba(255, 255, 255, 0.07),
-    0 0 0 7px rgba(255, 255, 255, 0.02),
-    0 0 16px rgba(255, 255, 255, 0.28),
-    0 0 28px rgba(255, 255, 255, 0.12);
-  animation: shooting-star var(--duration) linear infinite;
-  will-change: transform, opacity;
-}
-
-.shooting-star::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 220px;
-  height: 2px;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.34), transparent);
-  filter: blur(0.35px);
-}
-
-.shooting-star::after {
-  content: "";
-  position: absolute;
-  inset: -3px;
-  border-radius: 999px;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.7) 0%, transparent 72%);
-  filter: blur(1px);
 }
 
 body::selection {
@@ -219,6 +174,32 @@ a {
 
 button {
   cursor: pointer;
+}
+
+.shooting-star {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.95);
+  box-shadow:
+    0 0 0 3px rgb(255 255 255 / 0.06),
+    0 0 18px rgb(255 255 255 / 0.5);
+  animation-name: shooting-star;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.shooting-star::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 1px;
+  width: 120px;
+  height: 1px;
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, rgb(255 255 255 / 0.95), transparent);
+  opacity: 0.8;
 }
 
 ::-webkit-scrollbar {
@@ -290,6 +271,6 @@ input[type="number"] {
     @apply bg-background text-foreground;
   }
   html {
-    @apply font-mono;
+    @apply font-sans;
   }
 }

@@ -1,11 +1,6 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
@@ -14,7 +9,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "DayZ Tools Launcher",
-  description: "Liquid Glass desktop launcher for DayZ server management tools",
+  description: "Desktop launcher for DayZ server and content tools",
 };
 
 export default function RootLayout({
@@ -23,10 +18,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
-    >
+    <html lang="en" className={`${jetbrainsMono.variable} dark h-full antialiased`}>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
