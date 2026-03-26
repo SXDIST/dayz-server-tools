@@ -323,22 +323,24 @@ function ToggleField({
       type="button"
       aria-pressed={checked}
       onClick={() => setChecked((current) => !current)}
-      className="glass-subtle flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition-all duration-200 hover:bg-white/8"
+      className="glass-subtle inline-flex w-auto items-center gap-3 rounded-xl px-3 py-2 text-left transition-all duration-200 hover:bg-white/8"
     >
-      <span className="text-sm text-slate-200">{label}</span>
       <span
         className={cn(
-          "flex h-7 w-12 items-center rounded-full p-1 transition-all duration-200",
-          checked ? "bg-cyan-400/30" : "bg-white/10",
+          "flex h-6 w-11 items-center rounded-full p-1 transition-all duration-200",
+          checked
+            ? "bg-cyan-400/30 shadow-[0_0_20px_rgba(34,211,238,0.18)]"
+            : "bg-white/10",
         )}
       >
         <span
           className={cn(
-            "size-5 rounded-full bg-white transition-transform duration-200",
+            "size-4 rounded-full bg-white transition-transform duration-200",
             checked ? "translate-x-5" : "translate-x-0",
           )}
         />
       </span>
+      <span className="text-sm text-slate-200">{label}</span>
     </button>
   );
 }
