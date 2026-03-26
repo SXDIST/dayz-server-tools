@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Boxes,
+  ChevronDown,
   FileCog,
   Image,
   PackageSearch,
@@ -72,28 +73,22 @@ const mods = [
   { name: "@BuilderItems", source: "Local Folder", state: "Installed" },
 ];
 
-const configGroups = [
-  { title: "Network", items: ["hostname", "maxPlayers", "verifySignatures"] },
-  { title: "Gameplay", items: ["serverTime", "disableVoN", "respawnTime"] },
-  { title: "Logging", items: ["adminLogPlayerHitsOnly", "storageAutoFix", "instanceId"] },
-];
-
 const adminTools = [
-  ["VPPAdminTools", "Автонастройка профилей, прав и базовых файлов."],
-  ["Community Online Tools", "Инициализация ролей и конфигов разрешений."],
+  ["VPPAdminTools", "Auto-setup for profiles, permissions and base files."],
+  ["Community Online Tools", "Initialize roles and permissions config files."],
 ];
 
 const missions = [
-  ["chernarusplus", "Основная production-миссия"],
-  ["enoch", "Профиль Livonia"],
-  ["custom.namalsk", "Кастомная миссия"],
+  ["chernarusplus", "Main production mission"],
+  ["enoch", "Livonia profile"],
+  ["custom.namalsk", "Custom mission preset"],
 ];
 
 const serverPaths = [
-  ["DayZ Server Root", "D:\\Games\\DayZServer", "Обязательный путь"],
-  ["Profiles", "D:\\Games\\DayZServer\\profiles", "Опционально"],
-  ["Keys", "D:\\Games\\DayZServer\\keys", "Обычно определяется автоматически"],
-  ["mpmissions", "D:\\Games\\DayZServer\\mpmissions", "Папка миссий"],
+  ["DayZ Server Root", "D:\\Games\\DayZServer", "Required path"],
+  ["Profiles", "D:\\Games\\DayZServer\\profiles", "Optional override"],
+  ["Keys", "D:\\Games\\DayZServer\\keys", "Usually auto-detected"],
+  ["mpmissions", "D:\\Games\\DayZServer\\mpmissions", "Mission folder"],
 ];
 
 function SidebarItem({
@@ -116,13 +111,15 @@ function SidebarItem({
       onClick={onClick}
       className={cn(
         "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors",
-        active ? "bg-[#173244] text-white" : "text-slate-300 hover:bg-white/6",
+        active
+          ? "glass-subtle text-white shadow-[0_10px_30px_rgba(34,211,238,0.08)]"
+          : "text-slate-300 hover:bg-white/6",
       )}
     >
       <div
         className={cn(
           "flex size-9 shrink-0 items-center justify-center rounded-lg",
-          active ? "bg-cyan-400/14" : "bg-white/6",
+          active ? "bg-cyan-300/14 ring-1 ring-cyan-200/10" : "bg-white/6",
         )}
       >
         <Icon className="size-4" />
@@ -154,7 +151,9 @@ function TabButton({
       onClick={onClick}
       className={cn(
         "rounded-lg px-3 py-2 text-sm transition-colors",
-        active ? "bg-white/10 text-white" : "text-slate-400 hover:bg-white/6 hover:text-slate-200",
+        active
+          ? "glass-subtle text-white"
+          : "text-slate-400 hover:bg-white/6 hover:text-slate-200",
       )}
     >
       {label}
@@ -172,7 +171,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-white/8 bg-white/4">
+    <section className="glass-panel rounded-2xl">
       <div className="border-b border-white/8 px-5 py-4">
         <h2 className="text-base font-semibold text-white">{title}</h2>
         {description ? <p className="mt-1 text-sm text-slate-400">{description}</p> : null}
@@ -210,14 +209,129 @@ function PlaceholderModule({
   description: string;
 }) {
   return (
-    <div className="space-y-4">
-      <Section title={title} description={description}>
-        <div className="space-y-2">
-          <Row title="Status" description="Модуль запланирован как отдельный workspace." />
-          <Row title="Approach" description="Общий shell лаунчера останется тем же, изменится только содержимое main pane." />
-        </div>
-      </Section>
+    <Section title={title} description={description}>
+      <div className="space-y-2">
+        <Row title="Status" description="This module will get its own workspace." />
+        <Row title="Approach" description="The launcher shell stays the same while the main pane changes." />
+      </div>
+    </Section>
+  );
+}
+
+function ConfigField({
+  label,
+  description,
+  control,
+}: {
+  label: string;
+  description: string;
+  control: React.ReactNode;
+}) {
+  return (
+    <div className="grid gap-3 border-b border-white/6 py-4 last:border-b-0 xl:grid-cols-[220px_minmax(0,1fr)] xl:items-start">
+      <div>
+        <p className="text-sm font-medium text-white">{label}</p>
+        <p className="mt-1 text-sm text-slate-400">{description}</p>
+      </div>
+      <div>{control}</div>
     </div>
+  );
+}
+
+function SelectField({
+  defaultValue,
+  options,
+}: {
+  defaultValue: string;
+  options: string[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState(defaultValue);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="glass-subtle flex h-11 w-full items-center justify-between rounded-xl px-4 text-sm text-white outline-none"
+      >
+        <span>{value}</span>
+        <ChevronDown
+          className={cn("size-4 text-slate-400 transition-transform", open && "rotate-180")}
+        />
+      </button>
+
+      {open ? (
+        <div className="glass-panel absolute left-0 top-[calc(100%+0.5rem)] z-20 w-full rounded-xl p-2">
+          <div className="space-y-1">
+            {options.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => {
+                  setValue(option);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "w-full rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                  value === option
+                    ? "bg-cyan-300/14 text-white"
+                    : "text-slate-300 hover:bg-white/6",
+                )}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ToggleField({
+  enabled,
+  label,
+}: {
+  enabled: boolean;
+  label: string;
+}) {
+  const [checked, setChecked] = useState(enabled);
+
+  return (
+    <button
+      type="button"
+      aria-pressed={checked}
+      onClick={() => setChecked((current) => !current)}
+      className="glass-subtle flex w-full items-center justify-between rounded-xl px-4 py-3 text-left"
+    >
+      <span className="text-sm text-slate-200">{label}</span>
+      <span
+        className={cn(
+          "flex h-7 w-12 items-center rounded-full p-1 transition-colors",
+          checked ? "bg-cyan-400/30" : "bg-white/10",
+        )}
+      >
+        <span
+          className={cn(
+            "size-5 rounded-full bg-white transition-transform",
+            checked ? "translate-x-5" : "translate-x-0",
+          )}
+        />
+      </span>
+    </button>
   );
 }
 
@@ -234,49 +348,34 @@ export function LauncherShell() {
     switch (serverTab) {
       case "overview":
         return (
-          <div className="space-y-4">
-            <Section
-              title="Quick Actions"
-              description="Короткие действия вместо больших hero-блоков и dashboard-витрин."
-            >
-              <div className="flex flex-wrap gap-3">
-                {quickActions.map((action) => (
-                  <Button key={action} variant={action === quickActions[0] ? "primary" : "outline"}>
-                    {action}
-                  </Button>
-                ))}
-              </div>
-            </Section>
-
-            <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-              <Section title="Setup Flow" description="Основной сценарий настройки сервера.">
-                {[
-                  "Указать папку DayZ Server",
-                  "Импортировать моды",
-                  "Настроить server.cfg",
-                  "Подготовить админку и миссии",
-                ].map((step, index) => (
-                  <Row
-                    key={step}
-                    title={`Step 0${index + 1}`}
-                    description={step}
-                  />
-                ))}
-              </Section>
-
-              <Section title="Current State" description="Текущая сводка по workspace.">
-                <Row title="Server Root" description="D:\\Games\\DayZServer" />
-                <Row title="Mods" description="3 items in active preset" />
-                <Row title="Admin Tool" description="VPPAdminTools selected" />
-              </Section>
+          <Section
+            title="Quick Actions"
+            description="Fast entry points for the most common server tasks."
+          >
+            <div className="flex flex-wrap gap-3">
+              {quickActions.map((action) => (
+                <Button
+                  key={action}
+                  variant={action === quickActions[0] ? "primary" : "outline"}
+                >
+                  {action}
+                </Button>
+              ))}
             </div>
-          </div>
+          </Section>
         );
 
       case "mods":
         return (
-          <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-            <Section title="Active Mod Preset" description="Активный набор модов.">
+          <Section
+            title="Mods"
+            description="All detected server mods will appear here after automatic parsing."
+          >
+            <div className="flex flex-wrap gap-3 pb-4">
+              <Button variant="primary">Sync Workshop Mods</Button>
+              <Button variant="outline">Add Local Mod</Button>
+            </div>
+            <div>
               {mods.map((mod) => (
                 <Row
                   key={mod.name}
@@ -285,37 +384,102 @@ export function LauncherShell() {
                   trailing={<Badge>{mod.state}</Badge>}
                 />
               ))}
-            </Section>
-
-            <Section title="Import" description="Steam collection, publishedfileid или локальная папка.">
-              <div className="space-y-3">
-                <Input readOnly value="https://steamcommunity.com/sharedfiles/filedetails/?id=..." />
-                <Input readOnly value="D:\\Mods\\@BuilderItems" />
-                <div className="flex flex-wrap gap-3">
-                  <Button variant="primary">Sync Workshop Mods</Button>
-                  <Button variant="outline">Add Local Mod</Button>
-                </div>
-              </div>
-            </Section>
-          </div>
+            </div>
+          </Section>
         );
 
       case "config":
         return (
-          <div className="grid gap-4 xl:grid-cols-3">
-            {configGroups.map((group) => (
-              <Section key={group.title} title={group.title} description="Сгруппированные поля.">
-                {group.items.map((item) => (
-                  <Row key={item} title={item} description="Editable field" />
-                ))}
-              </Section>
-            ))}
-          </div>
+          <Section
+            title="Server.cfg"
+            description="Single editor panel for all core server.cfg values with context-aware controls."
+          >
+            <div className="space-y-1">
+              <ConfigField
+                label="hostname"
+                description="Public server name shown in the browser."
+                control={<Input defaultValue="DayZ Tools Dev Server" />}
+              />
+              <ConfigField
+                label="password"
+                description="Optional join password."
+                control={<Input defaultValue="" placeholder="Optional" />}
+              />
+              <ConfigField
+                label="maxPlayers"
+                description="Maximum connected players."
+                control={<Input defaultValue="60" type="number" />}
+              />
+              <ConfigField
+                label="verifySignatures"
+                description="Validate addon signatures on client connect."
+                control={<ToggleField enabled label="Enabled" />}
+              />
+              <ConfigField
+                label="disableVoN"
+                description="Disable in-game voice chat."
+                control={<ToggleField enabled={false} label="Disabled" />}
+              />
+              <ConfigField
+                label="serverTime"
+                description="Choose how the server time is resolved."
+                control={
+                  <div className="space-y-3">
+                    <SelectField
+                      defaultValue="SystemTime"
+                      options={["SystemTime", "Static", "Custom"]}
+                    />
+                    <Input defaultValue="2026-03-26 12:00" />
+                  </div>
+                }
+              />
+              <ConfigField
+                label="serverTimeAcceleration"
+                description="Controls daytime acceleration multiplier."
+                control={<Input defaultValue="8" type="number" />}
+              />
+              <ConfigField
+                label="serverNightTimeAcceleration"
+                description="Controls nighttime acceleration multiplier."
+                control={<Input defaultValue="4" type="number" />}
+              />
+              <ConfigField
+                label="instanceId"
+                description="Unique instance identifier."
+                control={<Input defaultValue="1" type="number" />}
+              />
+              <ConfigField
+                label="storageAutoFix"
+                description="Attempt automatic cleanup of storage problems."
+                control={<ToggleField enabled label="Enabled" />}
+              />
+              <ConfigField
+                label="loginQueueConcurrentPlayers"
+                description="How many players are processed in queue concurrently."
+                control={<Input defaultValue="5" type="number" />}
+              />
+              <ConfigField
+                label="adminLogPlayerHitsOnly"
+                description="Reduce admin logs to player hit events only."
+                control={<ToggleField enabled={false} label="Disabled" />}
+              />
+              <ConfigField
+                label="guaranteedUpdates"
+                description="Network update mode used by the server."
+                control={
+                  <SelectField
+                    defaultValue="1"
+                    options={["1", "2", "3"]}
+                  />
+                }
+              />
+            </div>
+          </Section>
         );
 
       case "admins":
         return (
-          <Section title="Admin Tools" description="Выбор и инициализация административного инструмента.">
+          <Section title="Admin Tools" description="Select and initialize an admin tool.">
             {adminTools.map(([title, description]) => (
               <Row key={title} title={title} description={description} />
             ))}
@@ -327,7 +491,7 @@ export function LauncherShell() {
 
       case "missions":
         return (
-          <Section title="Missions" description="Управление mpmissions и пресетами миссий.">
+          <Section title="Missions" description="Manage mpmissions and mission presets.">
             {missions.map(([title, description]) => (
               <Row key={title} title={title} description={description} />
             ))}
@@ -339,12 +503,12 @@ export function LauncherShell() {
 
       case "paths":
         return (
-          <Section title="Advanced Paths" description="Переопределение путей для нестандартных инсталляций.">
+          <Section title="Advanced Paths" description="Override paths for non-standard installations.">
             <div className="space-y-3">
               {serverPaths.map(([label, value, note]) => (
                 <div
                   key={label}
-                  className="grid gap-2 rounded-xl border border-white/8 bg-black/10 p-4 xl:grid-cols-[180px_1fr]"
+                  className="glass-subtle grid gap-2 rounded-xl p-4 xl:grid-cols-[180px_1fr]"
                 >
                   <div>
                     <p className="text-sm font-medium text-white">{label}</p>
@@ -371,21 +535,21 @@ export function LauncherShell() {
         return (
           <PlaceholderModule
             title="Image To PAA"
-            description="Будущий модуль для конвертации изображений в PAA."
+            description="Future module for image conversion to PAA."
           />
         );
       case "rvmat-editor":
         return (
           <PlaceholderModule
             title="RVMAT Editor"
-            description="Будущий редактор материалов и путей текстур."
+            description="Future material editor workspace."
           />
         );
       case "model-tools":
         return (
           <PlaceholderModule
             title="Model Tools"
-            description="Будущий модуль проверки структуры аддонов и ассетов."
+            description="Future addon and asset validation workspace."
           />
         );
     }
@@ -393,8 +557,14 @@ export function LauncherShell() {
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#09111d_0%,#0d1524_100%)] text-white">
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="absolute left-[-7rem] top-[-6rem] h-72 w-72 rounded-full bg-cyan-300/10 blur-[120px]" />
+        <div className="absolute right-[-9rem] top-20 h-80 w-80 rounded-full bg-sky-400/8 blur-[150px]" />
+        <div className="absolute bottom-[-10rem] left-1/3 h-96 w-96 rounded-full bg-blue-500/8 blur-[170px]" />
+      </div>
+
       <div className="grid min-h-screen grid-cols-[260px_minmax(0,1fr)]">
-        <aside className="border-r border-white/8 bg-[#121a28]">
+        <aside className="glass-panel m-3 mr-0 rounded-[24px]">
           <div className="flex h-full flex-col">
             <div className="border-b border-white/8 px-4 py-4">
               <div className="flex items-center gap-3">
@@ -409,7 +579,7 @@ export function LauncherShell() {
             </div>
 
             <div className="border-b border-white/8 px-4 py-3">
-              <div className="flex items-center gap-2 rounded-xl border border-white/8 bg-black/10 px-3 py-2">
+              <div className="glass-subtle flex items-center gap-2 rounded-xl px-3 py-2">
                 <Search className="size-4 text-slate-500" />
                 <span className="text-sm text-slate-500">Search tools</span>
               </div>
@@ -436,7 +606,7 @@ export function LauncherShell() {
 
             <div className="border-t border-white/8 px-3 py-3">
               <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-slate-300 hover:bg-white/6">
-                <div className="flex size-9 items-center justify-center rounded-lg bg-white/6">
+                <div className="glass-subtle flex size-9 items-center justify-center rounded-lg">
                   <Settings2 className="size-4" />
                 </div>
                 <div>
@@ -448,19 +618,10 @@ export function LauncherShell() {
           </div>
         </aside>
 
-        <section className="min-w-0 p-5">
+        <section className="min-w-0 p-5 pl-4">
           <div className="space-y-4">
-            <div className="flex items-start justify-between gap-4 border-b border-white/8 pb-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Module</p>
-                <h1 className="mt-2 text-3xl font-semibold text-white">{activeModuleData.name}</h1>
-                <p className="mt-1 text-sm text-slate-400">{activeModuleData.note}</p>
-              </div>
-              <Badge variant="accent">{activeModuleData.status}</Badge>
-            </div>
-
             {activeModule === "dayz-server" ? (
-              <div className="flex flex-wrap gap-2 border-b border-white/8 pb-4">
+              <div className="glass-subtle flex flex-wrap gap-2 rounded-2xl p-2">
                 {serverTabs.map((tab) => (
                   <TabButton
                     key={tab.id}
@@ -470,7 +631,15 @@ export function LauncherShell() {
                   />
                 ))}
               </div>
-            ) : null}
+            ) : (
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-3xl font-semibold text-white">{activeModuleData.name}</h1>
+                  <p className="mt-1 text-sm text-slate-400">{activeModuleData.note}</p>
+                </div>
+                <Badge variant="accent">{activeModuleData.status}</Badge>
+              </div>
+            )}
 
             {renderContent()}
           </div>
