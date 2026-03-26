@@ -1745,7 +1745,6 @@ async function launchDayzClient(options = {}) {
   const resolutionHeight = Number.parseInt(String(options.resolutionHeight || 0), 10);
   const args = [`-connect=${serverAddress}`, `-port=${serverPort}`];
   const executableDir = path.dirname(executablePath);
-  const clientBattleyePath = path.join(executableDir, "BattlEye");
 
   if (mods.length > 0) {
     args.push(`-mod=${mods.join(";")}`);
@@ -1760,10 +1759,6 @@ async function launchDayzClient(options = {}) {
   }
 
   args.push(displayMode === "fullscreen" ? "-fullscreen" : "-window");
-
-  if (await pathExists(clientBattleyePath)) {
-    args.push(`-BEpath=${clientBattleyePath}`);
-  }
 
   await writeDayzClientDisplayConfig({
     displayMode,
