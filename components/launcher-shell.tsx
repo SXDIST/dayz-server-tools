@@ -14,6 +14,14 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { BackgroundStars } from "@/components/background-stars";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -110,10 +118,10 @@ function SidebarItem({
     <button
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors",
+        "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all duration-200",
         active
           ? "glass-subtle text-white shadow-[0_10px_30px_rgba(34,211,238,0.08)]"
-          : "text-slate-300 hover:bg-white/6",
+          : "text-slate-300 hover:bg-white/6 hover:translate-x-[2px]",
       )}
     >
       <div
@@ -150,10 +158,10 @@ function TabButton({
     <button
       onClick={onClick}
       className={cn(
-        "rounded-lg px-3 py-2 text-sm transition-colors",
+        "rounded-lg border px-3 py-2 text-sm transition-colors duration-150",
         active
-          ? "glass-subtle text-white"
-          : "text-slate-400 hover:bg-white/6 hover:text-slate-200",
+          ? "border-white/12 bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+          : "border-transparent text-slate-400 hover:bg-white/6 hover:text-slate-200",
       )}
     >
       {label}
@@ -171,13 +179,13 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="glass-panel rounded-2xl">
-      <div className="border-b border-white/8 px-5 py-4">
-        <h2 className="text-base font-semibold text-white">{title}</h2>
-        {description ? <p className="mt-1 text-sm text-slate-400">{description}</p> : null}
-      </div>
-      <div className="p-5">{children}</div>
-    </section>
+    <Card className="glass-panel rounded-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_18px_60px_rgba(2,8,23,0.2)]">
+      <CardHeader className="border-b border-white/8 px-5 py-4">
+        <CardTitle className="text-base">{title}</CardTitle>
+        {description ? <CardDescription className="mt-1">{description}</CardDescription> : null}
+      </CardHeader>
+      <CardContent className="p-5">{children}</CardContent>
+    </Card>
   );
 }
 
@@ -274,7 +282,7 @@ function SelectField({
       </button>
 
       {open ? (
-        <div className="glass-panel absolute left-0 top-[calc(100%+0.5rem)] z-20 w-full rounded-xl p-2">
+        <div className="glass-panel animate-[panel-fade_180ms_ease-out] absolute left-0 top-[calc(100%+0.5rem)] z-20 w-full rounded-xl p-2">
           <div className="space-y-1">
             {options.map((option) => (
               <button
@@ -315,18 +323,18 @@ function ToggleField({
       type="button"
       aria-pressed={checked}
       onClick={() => setChecked((current) => !current)}
-      className="glass-subtle flex w-full items-center justify-between rounded-xl px-4 py-3 text-left"
+      className="glass-subtle flex w-full items-center justify-between rounded-xl px-4 py-3 text-left transition-all duration-200 hover:bg-white/8"
     >
       <span className="text-sm text-slate-200">{label}</span>
       <span
         className={cn(
-          "flex h-7 w-12 items-center rounded-full p-1 transition-colors",
+          "flex h-7 w-12 items-center rounded-full p-1 transition-all duration-200",
           checked ? "bg-cyan-400/30" : "bg-white/10",
         )}
       >
         <span
           className={cn(
-            "size-5 rounded-full bg-white transition-transform",
+            "size-5 rounded-full bg-white transition-transform duration-200",
             checked ? "translate-x-5" : "translate-x-0",
           )}
         />
@@ -557,6 +565,7 @@ export function LauncherShell() {
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#09111d_0%,#0d1524_100%)] text-white">
+      <BackgroundStars />
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute left-[-7rem] top-[-6rem] h-72 w-72 rounded-full bg-cyan-300/10 blur-[120px]" />
         <div className="absolute right-[-9rem] top-20 h-80 w-80 rounded-full bg-sky-400/8 blur-[150px]" />
@@ -621,7 +630,7 @@ export function LauncherShell() {
         <section className="min-w-0 p-5 pl-4">
           <div className="space-y-4">
             {activeModule === "dayz-server" ? (
-              <div className="glass-subtle flex flex-wrap gap-2 rounded-2xl p-2">
+              <div className="flex flex-wrap gap-2 rounded-2xl border border-white/8 bg-white/4 p-2">
                 {serverTabs.map((tab) => (
                   <TabButton
                     key={tab.id}
