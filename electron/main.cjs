@@ -225,6 +225,54 @@ async function resolveClientExecutable() {
   return null;
 }
 
+async function resolveSteamExecutable() {
+  const candidates = [
+    "C:\\Program Files (x86)\\Steam\\steam.exe",
+    "C:\\Program Files\\Steam\\steam.exe",
+  ];
+
+  for (let code = 68; code <= 90; code += 1) {
+    const driveLetter = String.fromCharCode(code);
+    candidates.push(`${driveLetter}:\\Steam\\steam.exe`);
+  }
+
+  for (const candidate of candidates) {
+    if (await pathExists(candidate)) {
+      return normalizePath(candidate);
+    }
+  }
+
+  return null;
+}
+
+async function runBattleyeInstaller(gameRoot) {
+  const installerPath = path.join(normalizePath(gameRoot), "BattlEye", "Install_BattlEye.bat");
+
+  if (!(await pathExists(installerPath))) {
+    return false;
+  }
+
+  await new Promise((resolve, reject) => {
+    const child = spawn("cmd.exe", ["/c", installerPath], {
+      cwd: path.dirname(installerPath),
+      windowsHide: true,
+      stdio: "ignore",
+    });
+
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      reject(new Error(`BattlEye installer exited with code ${code ?? "unknown"}.`));
+    });
+  });
+
+  return true;
+}
+
 function getDayzClientConfigPath() {
   return path.join(app.getPath("documents"), "DayZ", "DayZ.cfg");
 }
@@ -528,6 +576,10 @@ function formatNumberLiteral(value) {
   return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.?0+$/, "");
 }
 
+function formatVectorLiteral(value) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(6).replace(/\.?0+$/, "");
+}
+
 function sanitizeVectorString(value, fallback = "7500 0 7500") {
   const matches = String(value ?? "")
     .trim()
@@ -539,7 +591,7 @@ function sanitizeVectorString(value, fallback = "7500 0 7500") {
 
   return matches
     .slice(0, 3)
-    .map((part) => formatNumberLiteral(Number.parseFloat(part)))
+    .map((part) => formatVectorLiteral(Number.parseFloat(part)))
     .join(" ");
 }
 
@@ -957,6 +1009,29 @@ async function previewInitGenerator(request) {
   };
 }
 
+async function backupInitGenerator(request) {
+  const normalizedMissionPath = normalizePath(request?.missionPath);
+
+  if (!normalizedMissionPath) {
+    throw new Error("Mission path is required to create an init.c backup.");
+  }
+
+  const initPath = path.join(normalizedMissionPath, "init.c");
+
+  if (!(await pathExists(initPath))) {
+    throw new Error("No existing init.c file was found for the selected mission.");
+  }
+
+  const backupPath = `${initPath}.backup-${formatTimestampFilePart()}`;
+  await fsp.copyFile(initPath, backupPath);
+
+  return {
+    missionPath: normalizedMissionPath,
+    initPath,
+    backupPath,
+  };
+}
+
 async function applyInitGenerator(request) {
   const preview = await previewInitGenerator(request);
   let backupPath = null;
@@ -988,14 +1063,26 @@ function parseModArgumentValue(value) {
 const MANAGED_SERVER_CONFIG_KEYS = [
   "hostname",
   "password",
+  "passwordAdmin",
+  "description",
   "template",
   "maxPlayers",
+  "enableWhitelist",
   "verifySignatures",
+  "forceSameBuild",
   "disableVoN",
+  "vonCodecQuality",
+  "battlEye",
+  "shardId",
+  "disable3rdPerson",
+  "disableCrosshair",
+  "disablePersonalLight",
+  "lightingConfig",
   "serverTime",
   "serverTimePersistent",
   "serverTimeAcceleration",
   "serverNightTimeAcceleration",
+  "loginQueueMaxPlayers",
   "instanceId",
   "storageAutoFix",
   "loginQueueConcurrentPlayers",
@@ -1006,12 +1093,29 @@ const MANAGED_SERVER_CONFIG_KEYS = [
 function formatServerConfigValue(key, value) {
   const stringValue = String(value ?? "").trim();
 
-  if (["verifySignatures", "disableVoN", "storageAutoFix", "adminLogPlayerHitsOnly"].includes(key)) {
+  if (
+    [
+      "enableWhitelist",
+      "verifySignatures",
+      "forceSameBuild",
+      "disableVoN",
+      "battlEye",
+      "disable3rdPerson",
+      "disableCrosshair",
+      "disablePersonalLight",
+      "storageAutoFix",
+      "adminLogPlayerHitsOnly",
+    ].includes(key)
+  ) {
     const normalized = stringValue.toLowerCase();
+    if (key === "verifySignatures") {
+      return ["1", "2", "true", "yes"].includes(normalized) ? "2" : "0";
+    }
+
     return ["1", "true", "yes"].includes(normalized) ? "1" : "0";
   }
 
-  if (["hostname", "password", "template", "serverTime"].includes(key)) {
+  if (["hostname", "password", "passwordAdmin", "description", "template", "serverTime", "shardId"].includes(key)) {
     return `"${stringValue.replaceAll('"', '\\"')}"`;
   }
 
@@ -1655,6 +1759,20 @@ async function killServerProcess() {
   return serverRuntime;
 }
 
+async function killProcessesByImageNames(imageNames = []) {
+  for (const imageName of imageNames.filter(Boolean)) {
+    await new Promise((resolve) => {
+      const killer = spawn("taskkill", ["/im", imageName, "/t", "/f"], {
+        windowsHide: true,
+        stdio: "ignore",
+      });
+
+      killer.once("error", () => resolve());
+      killer.once("exit", () => resolve());
+    });
+  }
+}
+
 async function startServer(options = {}) {
   const serverRoot = normalizePath(options.serverRoot);
 
@@ -1675,8 +1793,12 @@ async function startServer(options = {}) {
 
   const profilesPath = normalizePath(options.profilesPath) || detected.profiles;
   const battleyePath = normalizePath(options.battleyePath) || detected.battleye;
+  const enableBattleye = options.enableBattleye !== false;
   const configPath = normalizePath(options.configPath) || detected.configPath;
   const mods = Array.isArray(options.mods) ? options.mods.filter(Boolean) : [];
+  const executableName = path.basename(executablePath);
+
+  await killProcessesByImageNames([executableName]);
 
   const args = [];
 
@@ -1692,7 +1814,7 @@ async function startServer(options = {}) {
     args.push(`-mod=${mods.join(";")}`);
   }
 
-  if (battleyePath) {
+  if (enableBattleye && battleyePath) {
     args.push(`-BEpath=${battleyePath}`);
   }
 
@@ -1740,25 +1862,35 @@ async function launchDayzClient(options = {}) {
   const serverAddress = options.serverAddress || "127.0.0.1";
   const serverPort = String(options.serverPort || 2302);
   const mods = Array.isArray(options.mods) ? options.mods.filter(Boolean).map(normalizePath) : [];
+  const enableBattleye = options.enableBattleye !== false;
   const displayMode = options.displayMode === "fullscreen" ? "fullscreen" : "windowed";
   const resolutionWidth = Number.parseInt(String(options.resolutionWidth || 0), 10);
   const resolutionHeight = Number.parseInt(String(options.resolutionHeight || 0), 10);
-  const args = [`-connect=${serverAddress}`, `-port=${serverPort}`];
+  const dayzArgs = [`-connect=${serverAddress}`, `-port=${serverPort}`];
   const executableDir = path.dirname(executablePath);
+  const executableName = path.basename(executablePath);
+  const battleyeExecutablePath = path.join(executableDir, "DayZ_BE.exe");
+  const useBattleyeBootstrap = await pathExists(battleyeExecutablePath);
+
+  await killProcessesByImageNames([executableName, "DayZ_BE.exe"]);
 
   if (mods.length > 0) {
-    args.push(`-mod=${mods.join(";")}`);
+    dayzArgs.push(`-mod=${mods.join(";")}`);
   }
 
   if (Number.isFinite(resolutionWidth) && resolutionWidth > 0) {
-    args.push(`-width=${resolutionWidth}`);
+    dayzArgs.push(`-width=${resolutionWidth}`);
   }
 
   if (Number.isFinite(resolutionHeight) && resolutionHeight > 0) {
-    args.push(`-height=${resolutionHeight}`);
+    dayzArgs.push(`-height=${resolutionHeight}`);
   }
 
-  args.push(displayMode === "fullscreen" ? "-fullscreen" : "-window");
+  dayzArgs.push(displayMode === "fullscreen" ? "-fullscreen" : "-window");
+
+  if (enableBattleye) {
+    dayzArgs.push("-useBE");
+  }
 
   await writeDayzClientDisplayConfig({
     displayMode,
@@ -1766,16 +1898,50 @@ async function launchDayzClient(options = {}) {
     resolutionHeight,
   });
 
-  spawn(executablePath, args, {
+  if (enableBattleye) {
+    try {
+      await runBattleyeInstaller(executableDir);
+    } catch {
+      // Do not block launch if the installer returns a non-zero code.
+    }
+  }
+
+  if (useBattleyeBootstrap) {
+    const bootstrapArgs = ["-exe", path.basename(executablePath), ...dayzArgs];
+
+    spawn(battleyeExecutablePath, bootstrapArgs, {
+      cwd: executableDir,
+      detached: true,
+      windowsHide: false,
+      stdio: "ignore",
+      env: {
+        ...process.env,
+        SteamAppId: "221100",
+        SteamGameId: "221100",
+      },
+    }).unref();
+
+    return {
+      executablePath: battleyeExecutablePath,
+      args: bootstrapArgs,
+    };
+  }
+
+  spawn(executablePath, dayzArgs, {
     cwd: executableDir,
     detached: true,
     windowsHide: false,
     stdio: "ignore",
+    env: {
+      ...process.env,
+      SteamAppId: "221100",
+      SteamGameId: "221100",
+    },
   }).unref();
 
   return {
     executablePath,
-    args,
+    args: dayzArgs,
   };
 }
 
@@ -1947,6 +2113,10 @@ ipcMain.handle("dayz:read-mission-session-settings", async (_event, missionPath)
 
 ipcMain.handle("dayz:preview-init-generator", async (_event, request) => {
   return previewInitGenerator(request);
+});
+
+ipcMain.handle("dayz:backup-init-generator", async (_event, request) => {
+  return backupInitGenerator(request);
 });
 
 ipcMain.handle("dayz:apply-init-generator", async (_event, request) => {

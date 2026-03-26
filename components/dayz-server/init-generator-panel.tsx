@@ -96,9 +96,11 @@ type InitGeneratorPanelProps = {
   onLoadPreset: () => void;
   onDeletePreset: () => void;
   onGeneratePreview: () => Promise<void>;
+  onBackup: () => Promise<void>;
   onApply: () => Promise<void>;
   previewResult: DayzInitPreviewResult | null;
   isPreviewPending: boolean;
+  isBackupPending: boolean;
   isApplyPending: boolean;
 };
 
@@ -116,11 +118,21 @@ export function InitGeneratorPanel({
   onLoadPreset,
   onDeletePreset,
   onGeneratePreview,
+  onBackup,
   onApply,
   previewResult,
   isPreviewPending,
+  isBackupPending,
   isApplyPending,
 }: InitGeneratorPanelProps) {
+  const isRandomWeather = initGeneratorState.weather.mode === "random";
+  const isFixedSpawn = initGeneratorState.spawn.mode === "fixed";
+  const isPresetSpawn = initGeneratorState.spawn.mode === "preset";
+  const isNearObjectSpawn = initGeneratorState.spawn.mode === "near-object";
+  const hasAutoEquipLoadout = initGeneratorState.helpers.autoEquipLoadout;
+  const hasFixedDate = initGeneratorState.helpers.fixedDateEnabled;
+  const hasTestTools = initGeneratorState.helpers.giveTestTools;
+
   const updateWeather = (field: keyof DayzInitWeatherSettings, value: string | boolean) => {
     setInitGeneratorState((current) => ({
       ...current,
@@ -181,23 +193,29 @@ export function InitGeneratorPanel({
                   onValueChange={setSelectedMissionName}
                 />
               </LabeledField>
-              <LabeledField label="Workflow" description="Preview first, then backup and write only the managed block on later passes.">
+              <LabeledField label="Workflow" description="Preview first, then back up or apply when you're ready.">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="secondary">Vanilla Base</Badge>
                   <Badge variant="secondary">Managed Update</Badge>
-                  <Badge variant="secondary">Backup + Apply</Badge>
+                  <Badge variant="secondary">Preview / Backup / Apply</Badge>
                 </div>
               </LabeledField>
             </div>
             <div className="flex flex-wrap items-start gap-3">
-            <Button variant="outline" onClick={() => void onGeneratePreview()} disabled={isPreviewPending}>
-              <FileCode2 className="size-4" />
-              Generate Preview
-            </Button>
-              <Button variant="default" onClick={() => void onApply()} disabled={isApplyPending}>
-                <Save className="size-4" />
-                {isApplyPending ? "Applying..." : "Backup + Apply"}
-              </Button>
+              <div className="inline-flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-background/40 p-1">
+                <Button variant="ghost" onClick={() => void onGeneratePreview()} disabled={isPreviewPending}>
+                  <FileCode2 className="size-4" />
+                  {isPreviewPending ? "Generating..." : "Generate Preview"}
+                </Button>
+                <Button variant="outline" onClick={() => void onBackup()} disabled={isBackupPending}>
+                  <Save className="size-4" />
+                  {isBackupPending ? "Backing Up..." : "Backup"}
+                </Button>
+                <Button variant="default" onClick={() => void onApply()} disabled={isApplyPending}>
+                  <Save className="size-4" />
+                  {isApplyPending ? "Applying..." : "Apply"}
+                </Button>
+              </div>
             </div>
           </div>
         </FieldGroup>
@@ -226,13 +244,17 @@ export function InitGeneratorPanel({
               </LabeledField>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              <Input value={initGeneratorState.weather.overcast} onChange={(event) => updateWeather("overcast", event.target.value)} placeholder="Overcast" />
-              <Input value={initGeneratorState.weather.rain} onChange={(event) => updateWeather("rain", event.target.value)} placeholder="Rain" />
-              <Input value={initGeneratorState.weather.fog} onChange={(event) => updateWeather("fog", event.target.value)} placeholder="Fog" />
-              <Input value={initGeneratorState.weather.wind} onChange={(event) => updateWeather("wind", event.target.value)} placeholder="Wind max (m/s)" />
-              <Input value={initGeneratorState.weather.storm} onChange={(event) => updateWeather("storm", event.target.value)} placeholder="Storm density" />
+              {!isRandomWeather ? (
+                <>
+                  <Input value={initGeneratorState.weather.overcast} onChange={(event) => updateWeather("overcast", event.target.value)} placeholder="Overcast" />
+                  <Input value={initGeneratorState.weather.rain} onChange={(event) => updateWeather("rain", event.target.value)} placeholder="Rain" />
+                  <Input value={initGeneratorState.weather.fog} onChange={(event) => updateWeather("fog", event.target.value)} placeholder="Fog" />
+                  <Input value={initGeneratorState.weather.wind} onChange={(event) => updateWeather("wind", event.target.value)} placeholder="Wind max (m/s)" />
+                  <Input value={initGeneratorState.weather.storm} onChange={(event) => updateWeather("storm", event.target.value)} placeholder="Storm density" />
+                </>
+              ) : null}
             </div>
-            {initGeneratorState.weather.mode === "random" ? (
+            {isRandomWeather ? (
               <div className="grid gap-3 md:grid-cols-2">
                 <Input value={initGeneratorState.weather.overcastMin} onChange={(event) => updateWeather("overcastMin", event.target.value)} placeholder="Overcast min" />
                 <Input value={initGeneratorState.weather.overcastMax} onChange={(event) => updateWeather("overcastMax", event.target.value)} placeholder="Overcast max" />
@@ -281,44 +303,54 @@ export function InitGeneratorPanel({
                   }
                 />
               </LabeledField>
-              <Input
-                value={initGeneratorState.spawn.fixedPosition}
-                onChange={(event) => updateSpawn("fixedPosition", event.target.value)}
-                placeholder="Fixed position: 7500 0 7500"
-              />
-              <TextareaField
-                value={initGeneratorState.spawn.presetPointsText}
-                onChange={(event) => updateSpawn("presetPointsText", event.target.value)}
-                placeholder="Preset points: Name|X Y Z"
-                className="min-h-24"
-              />
-              <div className="grid gap-3 md:grid-cols-2">
+              {isFixedSpawn ? (
                 <Input
-                  value={initGeneratorState.spawn.presetPointName}
-                  onChange={(event) => updateSpawn("presetPointName", event.target.value)}
-                  placeholder="Preset point name"
+                  value={initGeneratorState.spawn.fixedPosition}
+                  onChange={(event) => updateSpawn("fixedPosition", event.target.value)}
+                  placeholder="Fixed position: X Y Z, e.g. 2208.948730 68.414986 2251.680908"
                 />
-                <Input
-                  value={initGeneratorState.spawn.nearObjectClassname}
-                  onChange={(event) => updateSpawn("nearObjectClassname", event.target.value)}
-                  placeholder="Target object classname"
-                />
-                <Input
-                  value={initGeneratorState.spawn.nearObjectAnchor}
-                  onChange={(event) => updateSpawn("nearObjectAnchor", event.target.value)}
-                  placeholder="Anchor coordinates"
-                />
-                <Input
-                  value={initGeneratorState.spawn.nearObjectRadius}
-                  onChange={(event) => updateSpawn("nearObjectRadius", event.target.value)}
-                  placeholder="Search radius"
-                />
-              </div>
-              <Input
-                value={initGeneratorState.spawn.nearObjectOffset}
-                onChange={(event) => updateSpawn("nearObjectOffset", event.target.value)}
-                placeholder="Offset from object, e.g. 2 0 2"
-              />
+              ) : null}
+              {isPresetSpawn ? (
+                <>
+                  <TextareaField
+                    value={initGeneratorState.spawn.presetPointsText}
+                    onChange={(event) => updateSpawn("presetPointsText", event.target.value)}
+                    placeholder="Preset points: Name|X Y Z"
+                    className="min-h-24"
+                  />
+                  <Input
+                    value={initGeneratorState.spawn.presetPointName}
+                    onChange={(event) => updateSpawn("presetPointName", event.target.value)}
+                    placeholder="Preset point name"
+                  />
+                </>
+              ) : null}
+              {isNearObjectSpawn ? (
+                <>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Input
+                      value={initGeneratorState.spawn.nearObjectClassname}
+                      onChange={(event) => updateSpawn("nearObjectClassname", event.target.value)}
+                      placeholder="Target object classname"
+                    />
+                    <Input
+                      value={initGeneratorState.spawn.nearObjectRadius}
+                      onChange={(event) => updateSpawn("nearObjectRadius", event.target.value)}
+                      placeholder="Search radius"
+                    />
+                    <Input
+                      value={initGeneratorState.spawn.nearObjectAnchor}
+                      onChange={(event) => updateSpawn("nearObjectAnchor", event.target.value)}
+                      placeholder="Anchor coordinates"
+                    />
+                    <Input
+                      value={initGeneratorState.spawn.nearObjectOffset}
+                      onChange={(event) => updateSpawn("nearObjectOffset", event.target.value)}
+                      placeholder="Offset from object, e.g. 2 0 2"
+                    />
+                  </div>
+                </>
+              ) : null}
             </div>
           </FieldGroup>
         </div>
@@ -358,26 +390,34 @@ export function InitGeneratorPanel({
                 Delete
               </Button>
             </div>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              <Input value={initGeneratorState.loadout.body} onChange={(event) => updateLoadout("body", event.target.value)} placeholder="Body clothing" />
-              <Input value={initGeneratorState.loadout.legs} onChange={(event) => updateLoadout("legs", event.target.value)} placeholder="Legs clothing" />
-              <Input value={initGeneratorState.loadout.feet} onChange={(event) => updateLoadout("feet", event.target.value)} placeholder="Footwear" />
-              <Input value={initGeneratorState.loadout.backpack} onChange={(event) => updateLoadout("backpack", event.target.value)} placeholder="Backpack" />
-              <Input value={initGeneratorState.loadout.vest} onChange={(event) => updateLoadout("vest", event.target.value)} placeholder="Vest" />
-              <Input value={initGeneratorState.loadout.headgear} onChange={(event) => updateLoadout("headgear", event.target.value)} placeholder="Headgear" />
-              <Input value={initGeneratorState.loadout.gloves} onChange={(event) => updateLoadout("gloves", event.target.value)} placeholder="Gloves" />
-              <Input value={initGeneratorState.loadout.meleeWeapon} onChange={(event) => updateLoadout("meleeWeapon", event.target.value)} placeholder="Melee weapon" />
-              <Input value={initGeneratorState.loadout.primaryWeapon} onChange={(event) => updateLoadout("primaryWeapon", event.target.value)} placeholder="Primary weapon" />
-              <Input value={initGeneratorState.loadout.secondaryWeapon} onChange={(event) => updateLoadout("secondaryWeapon", event.target.value)} placeholder="Secondary weapon" />
-              <Input value={initGeneratorState.loadout.weaponAttachments} onChange={(event) => updateLoadout("weaponAttachments", event.target.value)} placeholder="Weapon attachments" className="xl:col-span-2" />
-            </div>
-            <div className="grid gap-3 xl:grid-cols-2">
-              <TextareaField value={initGeneratorState.loadout.inventoryItems} onChange={(event) => updateLoadout("inventoryItems", event.target.value)} placeholder="Starter items" />
-              <TextareaField value={initGeneratorState.loadout.magazines} onChange={(event) => updateLoadout("magazines", event.target.value)} placeholder="Magazines and ammo" />
-              <TextareaField value={initGeneratorState.loadout.foodWater} onChange={(event) => updateLoadout("foodWater", event.target.value)} placeholder="Food and water" />
-              <TextareaField value={initGeneratorState.loadout.medical} onChange={(event) => updateLoadout("medical", event.target.value)} placeholder="Medical items" />
-              <TextareaField className="xl:col-span-2" value={initGeneratorState.loadout.extraItems} onChange={(event) => updateLoadout("extraItems", event.target.value)} placeholder="Extra items" />
-            </div>
+            {hasAutoEquipLoadout ? (
+              <>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <Input value={initGeneratorState.loadout.body} onChange={(event) => updateLoadout("body", event.target.value)} placeholder="Body clothing" />
+                  <Input value={initGeneratorState.loadout.legs} onChange={(event) => updateLoadout("legs", event.target.value)} placeholder="Legs clothing" />
+                  <Input value={initGeneratorState.loadout.feet} onChange={(event) => updateLoadout("feet", event.target.value)} placeholder="Footwear" />
+                  <Input value={initGeneratorState.loadout.backpack} onChange={(event) => updateLoadout("backpack", event.target.value)} placeholder="Backpack" />
+                  <Input value={initGeneratorState.loadout.vest} onChange={(event) => updateLoadout("vest", event.target.value)} placeholder="Vest" />
+                  <Input value={initGeneratorState.loadout.headgear} onChange={(event) => updateLoadout("headgear", event.target.value)} placeholder="Headgear" />
+                  <Input value={initGeneratorState.loadout.gloves} onChange={(event) => updateLoadout("gloves", event.target.value)} placeholder="Gloves" />
+                  <Input value={initGeneratorState.loadout.meleeWeapon} onChange={(event) => updateLoadout("meleeWeapon", event.target.value)} placeholder="Melee weapon" />
+                  <Input value={initGeneratorState.loadout.primaryWeapon} onChange={(event) => updateLoadout("primaryWeapon", event.target.value)} placeholder="Primary weapon" />
+                  <Input value={initGeneratorState.loadout.secondaryWeapon} onChange={(event) => updateLoadout("secondaryWeapon", event.target.value)} placeholder="Secondary weapon" />
+                  <Input value={initGeneratorState.loadout.weaponAttachments} onChange={(event) => updateLoadout("weaponAttachments", event.target.value)} placeholder="Weapon attachments" className="xl:col-span-2" />
+                </div>
+                <div className="grid gap-3 xl:grid-cols-2">
+                  <TextareaField value={initGeneratorState.loadout.inventoryItems} onChange={(event) => updateLoadout("inventoryItems", event.target.value)} placeholder="Starter items" />
+                  <TextareaField value={initGeneratorState.loadout.magazines} onChange={(event) => updateLoadout("magazines", event.target.value)} placeholder="Magazines and ammo" />
+                  <TextareaField value={initGeneratorState.loadout.foodWater} onChange={(event) => updateLoadout("foodWater", event.target.value)} placeholder="Food and water" />
+                  <TextareaField value={initGeneratorState.loadout.medical} onChange={(event) => updateLoadout("medical", event.target.value)} placeholder="Medical items" />
+                  <TextareaField className="xl:col-span-2" value={initGeneratorState.loadout.extraItems} onChange={(event) => updateLoadout("extraItems", event.target.value)} placeholder="Extra items" />
+                </div>
+              </>
+            ) : (
+              <div className="rounded-xl border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">
+                Starter loadout fields are hidden because <span className="font-medium text-foreground">Auto Equip</span> is disabled.
+              </div>
+            )}
           </FieldGroup>
 
           <div className="space-y-4">
@@ -420,9 +460,17 @@ export function InitGeneratorPanel({
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <ToggleField checked={initGeneratorState.helpers.fixedDateEnabled} label={initGeneratorState.helpers.fixedDateEnabled ? "Fixed Time Enabled" : "Use Mission Time"} onCheckedChange={(checked) => updateHelpers("fixedDateEnabled", checked)} />
-                <Input value={initGeneratorState.helpers.fixedDate} onChange={(event) => updateHelpers("fixedDate", event.target.value)} placeholder="2026-03-26 12:00" />
+                {hasFixedDate ? (
+                  <Input value={initGeneratorState.helpers.fixedDate} onChange={(event) => updateHelpers("fixedDate", event.target.value)} placeholder="2026-03-26 12:00" />
+                ) : (
+                  <div className="rounded-xl border border-dashed border-border/60 px-4 py-3 text-sm text-muted-foreground">
+                    Mission/default date will be used.
+                  </div>
+                )}
               </div>
-              <TextareaField value={initGeneratorState.helpers.testTools} onChange={(event) => updateHelpers("testTools", event.target.value)} placeholder="One classname per line for helper tools" />
+              {hasTestTools ? (
+                <TextareaField value={initGeneratorState.helpers.testTools} onChange={(event) => updateHelpers("testTools", event.target.value)} placeholder="One classname per line for helper tools" />
+              ) : null}
             </FieldGroup>
 
             <FieldGroup

@@ -30,6 +30,7 @@ export function useDayzInitGenerator({
   const [selectedMissionName, setSelectedMissionName] = useState("");
   const [previewResult, setPreviewResult] = useState<DayzInitPreviewResult | null>(null);
   const [isPreviewPending, setIsPreviewPending] = useState(false);
+  const [isBackupPending, setIsBackupPending] = useState(false);
   const [isApplyPending, setIsApplyPending] = useState(false);
   const [presetNameInput, setPresetNameInput] = useState("");
   const [selectedPresetId, setSelectedPresetId] = useState(initGeneratorState.loadoutPresets[0]?.id ?? "");
@@ -192,6 +193,32 @@ export function useDayzInitGenerator({
     }
   }, [appendPreviewLog, dayzApi, requestPayload]);
 
+  const backupCurrentInit = useCallback(async () => {
+    if (!requestPayload) {
+      appendPreviewLog("[init] Select a mission before creating a backup.", "stderr");
+      return;
+    }
+
+    if (!dayzApi) {
+      appendPreviewLog("[init] init.c backup works in the Electron desktop build.");
+      return;
+    }
+
+    setIsBackupPending(true);
+
+    try {
+      const result = await dayzApi.backupInitGenerator(requestPayload);
+      appendPreviewLog(`[init] Backup created at ${result.backupPath}`);
+    } catch (error) {
+      appendPreviewLog(
+        `[init] ${error instanceof Error ? error.message : "Failed to create init.c backup."}`,
+        "stderr",
+      );
+    } finally {
+      setIsBackupPending(false);
+    }
+  }, [appendPreviewLog, dayzApi, requestPayload]);
+
   const saveCurrentLoadoutPreset = useCallback(() => {
     const rawName = presetNameInput.trim();
 
@@ -263,12 +290,14 @@ export function useDayzInitGenerator({
     setSelectedMissionName,
     previewResult,
     isPreviewPending,
+    isBackupPending,
     isApplyPending,
     presetNameInput,
     setPresetNameInput,
     selectedPresetId,
     setSelectedPresetId,
     generatePreview: () => generatePreview(true),
+    backupCurrentInit,
     applyGeneratedInit,
     saveCurrentLoadoutPreset,
     loadSelectedPreset,

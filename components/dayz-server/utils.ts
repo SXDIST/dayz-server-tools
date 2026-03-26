@@ -20,7 +20,7 @@ export function normalizeConfigScalar(value: string | undefined) {
 export function parseConfigBoolean(value: string | undefined, fallback: boolean) {
   const normalized = normalizeConfigScalar(value).toLowerCase();
 
-  if (["1", "true", "yes"].includes(normalized)) {
+  if (["1", "2", "true", "yes"].includes(normalized)) {
     return true;
   }
 
@@ -35,10 +35,24 @@ export function mapConfigSnapshotToForm(parsed: Record<string, string>): ServerC
   return {
     hostname: normalizeConfigScalar(parsed.hostname) || defaultServerConfigValues.hostname,
     password: normalizeConfigScalar(parsed.password),
+    passwordAdmin: normalizeConfigScalar(parsed.passwordAdmin),
+    description: normalizeConfigScalar(parsed.description),
     template: normalizeConfigScalar(parsed.template) || defaultServerConfigValues.template,
     maxPlayers: normalizeConfigScalar(parsed.maxPlayers) || defaultServerConfigValues.maxPlayers,
+    enableWhitelist: parseConfigBoolean(parsed.enableWhitelist, defaultServerConfigValues.enableWhitelist),
     verifySignatures: parseConfigBoolean(parsed.verifySignatures, defaultServerConfigValues.verifySignatures),
+    forceSameBuild: parseConfigBoolean(parsed.forceSameBuild, defaultServerConfigValues.forceSameBuild),
     disableVoN: parseConfigBoolean(parsed.disableVoN, defaultServerConfigValues.disableVoN),
+    vonCodecQuality: normalizeConfigScalar(parsed.vonCodecQuality) || defaultServerConfigValues.vonCodecQuality,
+    battlEye: parseConfigBoolean(parsed.battlEye, defaultServerConfigValues.battlEye),
+    shardId: normalizeConfigScalar(parsed.shardId) || defaultServerConfigValues.shardId,
+    disable3rdPerson: parseConfigBoolean(parsed.disable3rdPerson, defaultServerConfigValues.disable3rdPerson),
+    disableCrosshair: parseConfigBoolean(parsed.disableCrosshair, defaultServerConfigValues.disableCrosshair),
+    disablePersonalLight: parseConfigBoolean(
+      parsed.disablePersonalLight,
+      defaultServerConfigValues.disablePersonalLight,
+    ),
+    lightingConfig: normalizeConfigScalar(parsed.lightingConfig) || defaultServerConfigValues.lightingConfig,
     serverTime: normalizeConfigScalar(parsed.serverTime) || defaultServerConfigValues.serverTime,
     serverTimePersistent:
       normalizeConfigScalar(parsed.serverTimePersistent) || defaultServerConfigValues.serverTimePersistent,
@@ -52,6 +66,8 @@ export function mapConfigSnapshotToForm(parsed: Record<string, string>): ServerC
     loginQueueConcurrentPlayers:
       normalizeConfigScalar(parsed.loginQueueConcurrentPlayers) ||
       defaultServerConfigValues.loginQueueConcurrentPlayers,
+    loginQueueMaxPlayers:
+      normalizeConfigScalar(parsed.loginQueueMaxPlayers) || defaultServerConfigValues.loginQueueMaxPlayers,
     adminLogPlayerHitsOnly: parseConfigBoolean(
       parsed.adminLogPlayerHitsOnly,
       defaultServerConfigValues.adminLogPlayerHitsOnly,

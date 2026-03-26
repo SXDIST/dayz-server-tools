@@ -23,12 +23,23 @@ const METEORS = [
 export function BackgroundStars() {
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(20,184,166,0.08),transparent_28%),linear-gradient(180deg,#09111d_0%,#0d1524_100%)]" />
+      <div className="absolute inset-0 hidden bg-[radial-gradient(circle_at_top,rgba(20,184,166,0.08),transparent_28%),linear-gradient(180deg,#09111d_0%,#0d1524_100%)] dark:block" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(251,191,36,0.16),transparent_24%),linear-gradient(180deg,#f8fafc_0%,#eef4ff_100%)] dark:hidden" />
+
+      <div className="absolute left-1/2 top-20 dark:hidden">
+        <div className="relative -translate-x-1/2">
+          <span className="absolute left-1/2 top-1/2 h-32 w-px -translate-x-1/2 -translate-y-1/2 bg-[linear-gradient(180deg,transparent,rgba(245,158,11,0.2),transparent)]" />
+          <span className="absolute left-1/2 top-1/2 h-px w-32 -translate-x-1/2 -translate-y-1/2 bg-[linear-gradient(90deg,transparent,rgba(245,158,11,0.18),transparent)]" />
+          <span className="absolute left-1/2 top-1/2 h-24 w-px -translate-x-1/2 -translate-y-1/2 rotate-45 bg-[linear-gradient(180deg,transparent,rgba(245,158,11,0.12),transparent)]" />
+          <span className="absolute left-1/2 top-1/2 h-24 w-px -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-[linear-gradient(180deg,transparent,rgba(245,158,11,0.12),transparent)]" />
+          <span className="block h-14 w-14 rounded-full border border-amber-300/40 bg-[radial-gradient(circle,rgba(254,240,138,0.9)_0%,rgba(252,211,77,0.55)_45%,rgba(252,211,77,0.06)_100%)] shadow-[0_0_45px_rgba(250,204,21,0.18)]" />
+        </div>
+      </div>
 
       {STARS.map((star, index) => (
         <span
           key={`star-${index}`}
-          className="absolute rounded-full bg-white/90 shadow-[0_0_14px_rgba(255,255,255,0.35)] animate-[star-pulse_var(--star-duration)_ease-in-out_infinite]"
+          className="absolute hidden rounded-full bg-white/90 shadow-[0_0_14px_rgba(255,255,255,0.35)] animate-[star-pulse_var(--star-duration)_ease-in-out_infinite] dark:block"
           style={{
             top: star.top,
             left: star.left,
@@ -43,7 +54,7 @@ export function BackgroundStars() {
       {METEORS.map((meteor, index) => (
         <span
           key={`meteor-${index}`}
-          className="shooting-star"
+          className="shooting-star hidden dark:block"
           style={{
             top: meteor.top,
             left: meteor.left,

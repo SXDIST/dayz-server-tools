@@ -570,12 +570,14 @@ type DayzServerWorkspaceProps = {
   setInitSelectedMissionName: (value: string) => void;
   initPreviewResult: DayzInitPreviewResult | null;
   isInitPreviewPending: boolean;
+  isInitBackupPending: boolean;
   isInitApplyPending: boolean;
   initPresetNameInput: string;
   setInitPresetNameInput: (value: string) => void;
   initSelectedPresetId: string;
   setInitSelectedPresetId: (value: string) => void;
   onGenerateInitPreview: () => Promise<void>;
+  onBackupGeneratedInit: () => Promise<void>;
   onApplyGeneratedInit: () => Promise<void>;
   onSaveInitLoadoutPreset: () => void;
   onLoadInitLoadoutPreset: () => void;
@@ -602,6 +604,9 @@ type DayzServerWorkspaceProps = {
 };
 
 export function DayzServerWorkspace(props: DayzServerWorkspaceProps) {
+  const serverTimeMode = props.serverConfigValues.serverTime.trim();
+  const usesStaticTimeConfig = serverTimeMode !== "SystemTime";
+
   const renderContent = () => {
     switch (props.serverTab) {
       case "overview":
@@ -635,18 +640,33 @@ export function DayzServerWorkspace(props: DayzServerWorkspaceProps) {
             <div className="space-y-1">
               <ConfigField label="hostname" description="Public server name shown in the browser." control={<Input value={props.serverConfigValues.hostname} onChange={(event) => props.setServerConfigValues((current) => ({ ...current, hostname: event.target.value }))} />} />
               <ConfigField label="password" description="Optional join password." control={<Input value={props.serverConfigValues.password} placeholder="Optional" onChange={(event) => props.setServerConfigValues((current) => ({ ...current, password: event.target.value }))} />} />
+              <ConfigField label="passwordAdmin" description="Admin password used for server login." control={<Input value={props.serverConfigValues.passwordAdmin} placeholder="Optional" onChange={(event) => props.setServerConfigValues((current) => ({ ...current, passwordAdmin: event.target.value }))} />} />
+              <ConfigField label="description" description="Shown in the DayZ server browser." control={<Input value={props.serverConfigValues.description} placeholder="Optional" onChange={(event) => props.setServerConfigValues((current) => ({ ...current, description: event.target.value }))} />} />
               <ConfigField label="template" description="Active mission from the mpmissions folder." control={<SelectField value={props.serverConfigValues.template || "Select mission"} options={[...new Set([props.serverConfigValues.template, ...props.missions.map((mission) => mission.name)].filter(Boolean))]} onValueChange={(value) => props.setServerConfigValues((current) => ({ ...current, template: value }))} />} />
               <ConfigField label="maxPlayers" description="Maximum connected players." control={<Input value={props.serverConfigValues.maxPlayers} type="number" onChange={(event) => props.setServerConfigValues((current) => ({ ...current, maxPlayers: event.target.value }))} />} />
-              <ConfigField label="verifySignatures" description="Validate addon signatures on client connect." control={<ToggleField checked={props.serverConfigValues.verifySignatures} label={props.serverConfigValues.verifySignatures ? "Enabled" : "Disabled"} onCheckedChange={(checked) => props.setServerConfigValues((current) => ({ ...current, verifySignatures: checked }))} />} />
+              <ConfigField label="enableWhitelist" description="Allow only whitelisted players to connect." control={<ToggleField checked={props.serverConfigValues.enableWhitelist} label={props.serverConfigValues.enableWhitelist ? "Enabled" : "Disabled"} onCheckedChange={(checked) => props.setServerConfigValues((current) => ({ ...current, enableWhitelist: checked }))} />} />
+              <ConfigField label="verifySignatures" description="Validate addon signatures on client connect." control={<ToggleField checked={props.serverConfigValues.verifySignatures} label={props.serverConfigValues.verifySignatures ? "Strict" : "Disabled"} onCheckedChange={(checked) => props.setServerConfigValues((current) => ({ ...current, verifySignatures: checked }))} />} />
+              <ConfigField label="forceSameBuild" description="Allow only clients with the same executable build." control={<ToggleField checked={props.serverConfigValues.forceSameBuild} label={props.serverConfigValues.forceSameBuild ? "Enabled" : "Disabled"} onCheckedChange={(checked) => props.setServerConfigValues((current) => ({ ...current, forceSameBuild: checked }))} />} />
               <ConfigField label="disableVoN" description="Disable in-game voice chat." control={<ToggleField checked={props.serverConfigValues.disableVoN} label={props.serverConfigValues.disableVoN ? "Enabled" : "Disabled"} onCheckedChange={(checked) => props.setServerConfigValues((current) => ({ ...current, disableVoN: checked }))} />} />
-              <ConfigField label="serverTime" description="Choose how the server time is resolved." control={<div className="space-y-3"><SelectField value={props.serverConfigValues.serverTime} options={["SystemTime", "Static", "Custom"]} onValueChange={(value) => props.setServerConfigValues((current) => ({ ...current, serverTime: value }))} /><Input value={props.serverConfigValues.serverTimePersistent} onChange={(event) => props.setServerConfigValues((current) => ({ ...current, serverTimePersistent: event.target.value }))} /></div>} />
+              <ConfigField label="vonCodecQuality" description="Voice codec quality from 0 to 30." control={<Input value={props.serverConfigValues.vonCodecQuality} type="number" onChange={(event) => props.setServerConfigValues((current) => ({ ...current, vonCodecQuality: event.target.value }))} />} />
+              <ConfigField label="battlEye" description="Enable BattlEye for this server instance." control={<ToggleField checked={props.serverConfigValues.battlEye} label={props.serverConfigValues.battlEye ? "Enabled" : "Disabled"} onCheckedChange={(checked) => props.setServerConfigValues((current) => ({ ...current, battlEye: checked }))} />} />
+              <ConfigField label="shardId" description="Private shard identifier for the server." control={<Input value={props.serverConfigValues.shardId} placeholder="Optional private shard id" onChange={(event) => props.setServerConfigValues((current) => ({ ...current, shardId: event.target.value }))} />} />
+              <ConfigField label="disable3rdPerson" description="Disable third-person camera for players." control={<ToggleField checked={props.serverConfigValues.disable3rdPerson} label={props.serverConfigValues.disable3rdPerson ? "Enabled" : "Disabled"} onCheckedChange={(checked) => props.setServerConfigValues((current) => ({ ...current, disable3rdPerson: checked }))} />} />
+              <ConfigField label="disableCrosshair" description="Disable crosshair for connected clients." control={<ToggleField checked={props.serverConfigValues.disableCrosshair} label={props.serverConfigValues.disableCrosshair ? "Enabled" : "Disabled"} onCheckedChange={(checked) => props.setServerConfigValues((current) => ({ ...current, disableCrosshair: checked }))} />} />
+              <ConfigField label="disablePersonalLight" description="Disable personal light for all players." control={<ToggleField checked={props.serverConfigValues.disablePersonalLight} label={props.serverConfigValues.disablePersonalLight ? "Enabled" : "Disabled"} onCheckedChange={(checked) => props.setServerConfigValues((current) => ({ ...current, disablePersonalLight: checked }))} />} />
+              <ConfigField label="lightingConfig" description="Night lighting mode used by the server." control={<SelectField value={props.serverConfigValues.lightingConfig} options={["0", "1"]} onValueChange={(value) => props.setServerConfigValues((current) => ({ ...current, lightingConfig: value }))} />} />
+              <ConfigField label="serverTime" description="Choose how the server time is resolved." control={<Input value={props.serverConfigValues.serverTime} onChange={(event) => props.setServerConfigValues((current) => ({ ...current, serverTime: event.target.value }))} placeholder='SystemTime or YYYY/MM/DD/HH/MM' />} />
+              {usesStaticTimeConfig ? (
+                <ConfigField label="serverTimePersistent" description="Persist in-game time between restarts." control={<ToggleField checked={props.serverConfigValues.serverTimePersistent === "1"} label={props.serverConfigValues.serverTimePersistent === "1" ? "Enabled" : "Disabled"} onCheckedChange={(checked) => props.setServerConfigValues((current) => ({ ...current, serverTimePersistent: checked ? "1" : "0" }))} />} />
+              ) : null}
               <ConfigField label="serverTimeAcceleration" description="Controls daytime acceleration multiplier." control={<Input value={props.serverConfigValues.serverTimeAcceleration} type="number" onChange={(event) => props.setServerConfigValues((current) => ({ ...current, serverTimeAcceleration: event.target.value }))} />} />
               <ConfigField label="serverNightTimeAcceleration" description="Controls nighttime acceleration multiplier." control={<Input value={props.serverConfigValues.serverNightTimeAcceleration} type="number" onChange={(event) => props.setServerConfigValues((current) => ({ ...current, serverNightTimeAcceleration: event.target.value }))} />} />
+              <ConfigField label="guaranteedUpdates" description="Network update mode used by the server." control={<SelectField value={props.serverConfigValues.guaranteedUpdates} options={["1", "2", "3"]} onValueChange={(value) => props.setServerConfigValues((current) => ({ ...current, guaranteedUpdates: value }))} />} />
+              <ConfigField label="loginQueueConcurrentPlayers" description="How many players are processed in queue concurrently." control={<Input value={props.serverConfigValues.loginQueueConcurrentPlayers} type="number" onChange={(event) => props.setServerConfigValues((current) => ({ ...current, loginQueueConcurrentPlayers: event.target.value }))} />} />
+              <ConfigField label="loginQueueMaxPlayers" description="Maximum number of players allowed to wait in queue." control={<Input value={props.serverConfigValues.loginQueueMaxPlayers} type="number" onChange={(event) => props.setServerConfigValues((current) => ({ ...current, loginQueueMaxPlayers: event.target.value }))} />} />
               <ConfigField label="instanceId" description="Unique instance identifier." control={<Input value={props.serverConfigValues.instanceId} type="number" onChange={(event) => props.setServerConfigValues((current) => ({ ...current, instanceId: event.target.value }))} />} />
               <ConfigField label="storageAutoFix" description="Attempt automatic cleanup of storage problems." control={<ToggleField checked={props.serverConfigValues.storageAutoFix} label={props.serverConfigValues.storageAutoFix ? "Enabled" : "Disabled"} onCheckedChange={(checked) => props.setServerConfigValues((current) => ({ ...current, storageAutoFix: checked }))} />} />
-              <ConfigField label="loginQueueConcurrentPlayers" description="How many players are processed in queue concurrently." control={<Input value={props.serverConfigValues.loginQueueConcurrentPlayers} type="number" onChange={(event) => props.setServerConfigValues((current) => ({ ...current, loginQueueConcurrentPlayers: event.target.value }))} />} />
               <ConfigField label="adminLogPlayerHitsOnly" description="Reduce admin logs to player hit events only." control={<ToggleField checked={props.serverConfigValues.adminLogPlayerHitsOnly} label={props.serverConfigValues.adminLogPlayerHitsOnly ? "Enabled" : "Disabled"} onCheckedChange={(checked) => props.setServerConfigValues((current) => ({ ...current, adminLogPlayerHitsOnly: checked }))} />} />
-              <ConfigField label="guaranteedUpdates" description="Network update mode used by the server." control={<SelectField value={props.serverConfigValues.guaranteedUpdates} options={["1", "2", "3"]} onValueChange={(value) => props.setServerConfigValues((current) => ({ ...current, guaranteedUpdates: value }))} />} />
             </div>
           </Section>
         );
@@ -744,17 +764,19 @@ export function DayzServerWorkspace(props: DayzServerWorkspaceProps) {
                 onLoadPreset={props.onLoadInitLoadoutPreset}
                 onDeletePreset={props.onDeleteInitLoadoutPreset}
                 onGeneratePreview={props.onGenerateInitPreview}
+                onBackup={props.onBackupGeneratedInit}
                 onApply={props.onApplyGeneratedInit}
                 previewResult={props.initPreviewResult}
                 isPreviewPending={props.isInitPreviewPending}
+                isBackupPending={props.isInitBackupPending}
                 isApplyPending={props.isInitApplyPending}
               />
             </div>
           </Section>
         );
-      case "paths":
+      case "settings":
         return (
-          <Section title="Paths" description="Set auto-detected folders and an explicit DayZ client executable.">
+          <Section title="Settings" description="Set auto-detected folders and an explicit DayZ client executable.">
             <div className="space-y-3">
               {serverPaths.map(([label, value, note]) => (
                 <div key={label} className="grid gap-2 rounded-xl border border-border/60 bg-muted/20 p-4 xl:grid-cols-[180px_1fr]">

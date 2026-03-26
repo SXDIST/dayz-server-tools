@@ -1,26 +1,65 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { BackgroundStars } from "@/components/background-stars";
 import { DayzServerPage } from "@/components/dayz-server/page";
 import { modules, type ModuleId } from "@/components/launcher/constants";
 import { AppSidebar } from "@/components/launcher/app-sidebar";
 import { PlaceholderModule } from "@/components/launcher/placeholder-module";
+import { launcherLastViewStorageKey } from "@/components/launcher/preferences";
+import { SettingsPage } from "@/components/launcher/settings-page";
+import { useLauncherPreferences } from "@/components/launcher/use-launcher-preferences";
 import { Badge } from "@/components/ui/badge";
 
 export function LauncherShell() {
-  const [activeModule, setActiveModule] = useState<ModuleId>("dayz-server");
+  const {
+    preferences,
+    setPreferences,
+    lastView,
+    setLastView,
+  } = useLauncherPreferences();
+  const [activeView, setActiveView] = useState<ModuleId | "settings">("dayz-server");
+  const restoredViewRef = useRef(false);
 
   const activeModuleData = useMemo(
-    () => modules.find((item) => item.id === activeModule) ?? modules[0],
-    [activeModule],
+    () => modules.find((item) => item.id === activeView) ?? modules[0],
+    [activeView],
   );
 
+  const handleSelectView = (view: ModuleId | "settings") => {
+    setActiveView(view);
+    setLastView(view);
+
+    if (!preferences.rememberLastView && typeof window !== "undefined") {
+      window.localStorage.removeItem(launcherLastViewStorageKey);
+    }
+  };
+
+  useEffect(() => {
+    if (restoredViewRef.current) {
+      return;
+    }
+
+    restoredViewRef.current = true;
+
+    if (!preferences.rememberLastView || !lastView) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setActiveView(lastView as ModuleId | "settings");
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [lastView, preferences.rememberLastView]);
+
   const renderContent = () => {
-    switch (activeModule) {
+    switch (activeView) {
       case "dayz-server":
         return <DayzServerPage />;
+      case "settings":
+        return <SettingsPage preferences={preferences} setPreferences={setPreferences} />;
       case "image-to-paa":
         return <PlaceholderModule title="Image To PAA" description="Future module for image conversion to PAA." />;
       case "rvmat-editor":
@@ -32,12 +71,16 @@ export function LauncherShell() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
-      <BackgroundStars />
-      <div className="grid min-h-screen grid-cols-[260px_minmax(0,1fr)] items-start">
-        <AppSidebar activeModule={activeModule} onSelectModule={setActiveModule} />
+      {preferences.backgroundEffects ? <BackgroundStars /> : null}
+      <div className="launcher-shell-grid grid min-h-screen grid-cols-[260px_minmax(0,1fr)] items-start">
+        <AppSidebar
+          activeView={activeView}
+          onSelectModule={handleSelectView}
+          compactSidebar={preferences.compactSidebar}
+        />
 
         <section className="relative z-10 min-w-0 p-5 pl-4">
-          {activeModule === "dayz-server" ? (
+          {activeView === "dayz-server" || activeView === "settings" ? (
             renderContent()
           ) : (
             <div className="space-y-4">

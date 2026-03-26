@@ -11,6 +11,7 @@ function SidebarItem({
   note,
   status,
   icon: Icon,
+  compact,
   onClick,
 }: {
   active: boolean;
@@ -18,19 +19,21 @@ function SidebarItem({
   note: string;
   status: string;
   icon: React.ComponentType<{ className?: string }>;
+  compact: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all duration-200",
+        "launcher-sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all duration-200",
+        compact && "py-2",
         active
           ? "border border-border bg-accent text-accent-foreground"
           : "border border-transparent text-muted-foreground hover:bg-accent/60 hover:text-foreground",
       )}
     >
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/40">
+      <div className="launcher-sidebar-item-icon flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/40">
         <Icon className="size-4" />
       </div>
       <div className="min-w-0 flex-1">
@@ -45,15 +48,17 @@ function SidebarItem({
 }
 
 export function AppSidebar({
-  activeModule,
+  activeView,
   onSelectModule,
+  compactSidebar,
 }: {
-  activeModule: ModuleId;
-  onSelectModule: (moduleId: ModuleId) => void;
+  activeView: ModuleId | "settings";
+  onSelectModule: (moduleId: ModuleId | "settings") => void;
+  compactSidebar: boolean;
 }) {
   return (
-    <aside className="sticky top-3 relative z-10 m-3 mr-0 self-start rounded-[24px] border border-border/70 bg-card/95">
-      <div className="flex max-h-[calc(100vh-1.5rem)] flex-col">
+    <aside className="launcher-sidebar sticky top-3 relative z-10 m-3 mr-0 self-start rounded-[24px] border border-border/70 bg-card/95">
+      <div className="launcher-sidebar-content flex max-h-[calc(100vh-1.5rem)] flex-col">
         <div className="border-b border-border/60 px-4 py-4">
           <div className="flex items-center gap-3">
             <div className="flex size-9 items-center justify-center rounded-xl border border-border/60 bg-muted/30">
@@ -81,11 +86,12 @@ export function AppSidebar({
             {modules.map((module) => (
               <SidebarItem
                 key={module.id}
-                active={activeModule === module.id}
+                active={activeView === module.id}
                 title={module.name}
                 note={module.note}
                 status={module.status}
                 icon={module.icon}
+                compact={compactSidebar}
                 onClick={() => onSelectModule(module.id)}
               />
             ))}
@@ -93,8 +99,15 @@ export function AppSidebar({
         </div>
 
         <div className="border-t border-border/60 px-3 py-3">
-          <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-muted-foreground hover:bg-accent/60 hover:text-foreground">
-            <div className="flex size-9 items-center justify-center rounded-lg border border-border/60 bg-muted/30">
+          <button
+            onClick={() => onSelectModule("settings")}
+            className={cn(
+              "launcher-sidebar-item flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+              activeView === "settings" ? "border border-border bg-accent text-accent-foreground" : "border border-transparent",
+              compactSidebar && "py-2",
+            )}
+          >
+            <div className="launcher-sidebar-item-icon flex size-9 items-center justify-center rounded-lg border border-border/60 bg-muted/30">
               <Settings2 className="size-4" />
             </div>
             <div>

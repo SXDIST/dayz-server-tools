@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     scanMissions: (missionsRoot) => ipcRenderer.invoke("dayz:scan-missions", missionsRoot),
     readMissionSessionSettings: (missionPath) => ipcRenderer.invoke("dayz:read-mission-session-settings", missionPath),
     previewInitGenerator: (request) => ipcRenderer.invoke("dayz:preview-init-generator", request),
+    backupInitGenerator: (request) => ipcRenderer.invoke("dayz:backup-init-generator", request),
     applyInitGenerator: (request) => ipcRenderer.invoke("dayz:apply-init-generator", request),
     scanMods: (serverRoot) => ipcRenderer.invoke("dayz:scan-mods", serverRoot),
     scanWorkshopMods: (serverRoot) => ipcRenderer.invoke("dayz:scan-workshop-mods", serverRoot),

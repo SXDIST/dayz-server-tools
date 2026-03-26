@@ -470,10 +470,11 @@ export function useDayzWorkspace({
       serverRoot: pathValues[DAYZ_SERVER_ROOT_LABEL] ?? "",
       profilesPath: pathValues[PROFILES_LABEL] ?? "",
       battleyePath: pathValues[BATTLEYE_LABEL] ?? "",
+      enableBattleye: serverConfigValues.battlEye,
       configPath: serverConfigPath || undefined,
       mods: serverMods.filter((mod) => mod.enabled).map((mod) => mod.path),
     };
-  }, [pathValues, serverConfigPath, serverMods]);
+  }, [pathValues, serverConfigPath, serverConfigValues.battlEye, serverMods]);
 
   return {
     pathValues,

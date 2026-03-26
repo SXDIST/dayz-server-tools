@@ -1,4 +1,4 @@
-export type ServerTab = "overview" | "mods" | "config" | "admins" | "missions" | "paths";
+export type ServerTab = "overview" | "mods" | "config" | "admins" | "missions" | "settings";
 
 export const serverTabs: { id: ServerTab; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -6,7 +6,7 @@ export const serverTabs: { id: ServerTab; label: string }[] = [
   { id: "config", label: "Server.cfg" },
   { id: "admins", label: "Admin Tools" },
   { id: "missions", label: "Missions" },
-  { id: "paths", label: "Paths" },
+  { id: "settings", label: "Settings" },
 ];
 
 export const fallbackMods = [
@@ -62,14 +62,26 @@ export const defaultClientSettings = {
 export const defaultServerConfigValues = {
   hostname: "DayZ Tools Dev Server",
   password: "",
+  passwordAdmin: "",
+  description: "",
   template: "",
   maxPlayers: "60",
+  enableWhitelist: false,
   verifySignatures: true,
+  forceSameBuild: true,
   disableVoN: false,
+  vonCodecQuality: "20",
+  battlEye: true,
+  shardId: "",
+  disable3rdPerson: false,
+  disableCrosshair: false,
+  disablePersonalLight: true,
+  lightingConfig: "0",
   serverTime: "SystemTime",
   serverTimePersistent: "",
   serverTimeAcceleration: "8",
   serverNightTimeAcceleration: "4",
+  loginQueueMaxPlayers: "500",
   instanceId: "1",
   storageAutoFix: true,
   loginQueueConcurrentPlayers: "5",

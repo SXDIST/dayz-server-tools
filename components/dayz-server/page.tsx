@@ -212,6 +212,7 @@ export function DayzServerPage() {
         serverPort: 2302,
         mods: mods.serverMods.filter((mod) => mod.enabled).map((mod) => mod.path),
         executablePath: workspace.clientPath || undefined,
+        enableBattleye: workspace.serverConfigValues.battlEye,
         displayMode: workspace.clientSettings.displayMode,
         resolutionWidth,
         resolutionHeight,
@@ -224,7 +225,7 @@ export function DayzServerPage() {
         "stderr",
       );
     }
-  }, [dayzApi, mods.serverMods, runtime, workspace.clientPath, workspace.clientSettings]);
+  }, [dayzApi, mods.serverMods, runtime, workspace.clientPath, workspace.clientSettings, workspace.serverConfigValues.battlEye]);
 
   return (
     <DayzServerWorkspace
@@ -258,12 +259,14 @@ export function DayzServerPage() {
       setInitSelectedMissionName={initGenerator.setSelectedMissionName}
       initPreviewResult={initGenerator.previewResult}
       isInitPreviewPending={initGenerator.isPreviewPending}
+      isInitBackupPending={initGenerator.isBackupPending}
       isInitApplyPending={initGenerator.isApplyPending}
       initPresetNameInput={initGenerator.presetNameInput}
       setInitPresetNameInput={initGenerator.setPresetNameInput}
       initSelectedPresetId={initGenerator.selectedPresetId}
       setInitSelectedPresetId={initGenerator.setSelectedPresetId}
       onGenerateInitPreview={initGenerator.generatePreview}
+      onBackupGeneratedInit={initGenerator.backupCurrentInit}
       onApplyGeneratedInit={initGenerator.applyGeneratedInit}
       onSaveInitLoadoutPreset={initGenerator.saveCurrentLoadoutPreset}
       onLoadInitLoadoutPreset={initGenerator.loadSelectedPreset}

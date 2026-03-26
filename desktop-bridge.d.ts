@@ -34,6 +34,7 @@ declare global {
     serverRoot: string;
     profilesPath?: string;
     battleyePath?: string;
+    enableBattleye?: boolean;
     configPath?: string;
     mods?: string[];
   }
@@ -43,6 +44,7 @@ declare global {
     serverPort?: number;
     mods?: string[];
     executablePath?: string;
+    enableBattleye?: boolean;
     displayMode?: "windowed" | "fullscreen";
     resolutionWidth?: number;
     resolutionHeight?: number;
@@ -198,6 +200,12 @@ declare global {
     backupPath: string | null;
   }
 
+  interface DayzInitBackupResult {
+    missionPath: string;
+    initPath: string;
+    backupPath: string;
+  }
+
   interface DayzParsedMod {
     id: string;
     name: string;
@@ -250,6 +258,7 @@ declare global {
       scanMissions: (missionsRoot: string) => Promise<DayzMission[]>;
       readMissionSessionSettings: (missionPath: string) => Promise<DayzMissionSessionSettings>;
       previewInitGenerator: (request: DayzInitGeneratorRequest) => Promise<DayzInitPreviewResult>;
+      backupInitGenerator: (request: DayzInitGeneratorRequest) => Promise<DayzInitBackupResult>;
       applyInitGenerator: (request: DayzInitGeneratorRequest) => Promise<DayzInitApplyResult>;
       scanMods: (serverRoot: string) => Promise<DayzParsedMod[]>;
       scanWorkshopMods: (serverRoot: string) => Promise<DayzParsedMod[]>;
