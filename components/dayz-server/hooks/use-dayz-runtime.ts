@@ -6,7 +6,15 @@ import { createFallbackRuntime } from "@/components/dayz-server/utils";
 
 export function useDayzRuntime(dayzApi: DesktopBridge["dayz"] | undefined, isDesktop: boolean) {
   const [serverRuntime, setServerRuntime] = useState<DayzServerRuntime>(createFallbackRuntime);
+  const [clientRuntime, setClientRuntime] = useState<DayzClientRuntime>({
+    status: "stopped",
+    pid: null,
+    startedAt: null,
+    executablePath: null,
+    launchArgs: [],
+  });
   const [isServerPending, setIsServerPending] = useState(false);
+  const [isClientPending, setIsClientPending] = useState(false);
   const previewLogCounterRef = useRef(0);
 
   const appendPreviewLog = useCallback((line: string, level: DayzServerLogEntry["level"] = "info") => {
@@ -49,6 +57,27 @@ export function useDayzRuntime(dayzApi: DesktopBridge["dayz"] | undefined, isDes
         }
       });
 
+    dayzApi
+      .getClientRuntime()
+      .then((runtime) => {
+        if (!mounted) {
+          return;
+        }
+
+        setClientRuntime(runtime);
+      })
+      .catch(() => {
+        if (mounted) {
+          setClientRuntime({
+            status: "stopped",
+            pid: null,
+            startedAt: null,
+            executablePath: null,
+            launchArgs: [],
+          });
+        }
+      });
+
     const unsubscribeLog = dayzApi.onServerLog((entry) => {
       if (!mounted) {
         return;
@@ -71,18 +100,31 @@ export function useDayzRuntime(dayzApi: DesktopBridge["dayz"] | undefined, isDes
       }));
     });
 
+    const unsubscribeClientStatus = dayzApi.onClientStatus((runtime) => {
+      if (!mounted) {
+        return;
+      }
+
+      setClientRuntime(runtime);
+    });
+
     return () => {
       mounted = false;
       unsubscribeLog();
       unsubscribeStatus();
+      unsubscribeClientStatus();
     };
   }, [dayzApi, isDesktop]);
 
   return {
     serverRuntime,
     setServerRuntime,
+    clientRuntime,
+    setClientRuntime,
     isServerPending,
     setIsServerPending,
+    isClientPending,
+    setIsClientPending,
     appendPreviewLog,
   };
 }

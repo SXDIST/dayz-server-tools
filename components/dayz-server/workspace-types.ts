@@ -1,0 +1,79 @@
+import type { Dispatch, SetStateAction } from "react";
+
+import type { ServerConfigValues, ServerTab } from "@/components/dayz-server/constants";
+
+export type DayzServerClientSettings = {
+  displayMode: "windowed" | "fullscreen";
+  resolution: string;
+};
+
+export type DayzServerModPreset = {
+  id: string;
+  name: string;
+  enabledModPaths: string[];
+};
+
+export type DayzServerWorkspaceProps = {
+  serverTab: ServerTab;
+  setServerTab: (tab: ServerTab) => void;
+  runtime: DayzServerRuntime;
+  clientRuntime: DayzClientRuntime;
+  isServerPending: boolean;
+  isClientPending: boolean;
+  onStart: () => Promise<void>;
+  onStop: () => Promise<void>;
+  onRestart: () => Promise<void>;
+  onLaunchClient: () => Promise<void>;
+  onStopClient: () => Promise<void>;
+  modsSearch: string;
+  setModsSearch: (value: string) => void;
+  pathValues: Record<string, string>;
+  enabledMods: DayzParsedMod[];
+  availableWorkshopMods: DayzParsedMod[];
+  availableLocalMods: DayzParsedMod[];
+  modPresets: DayzServerModPreset[];
+  modPresetNameInput: string;
+  setModPresetNameInput: (value: string) => void;
+  selectedModPresetId: string;
+  setSelectedModPresetId: (value: string) => void;
+  onSaveModPreset: () => void;
+  onLoadModPreset: () => void;
+  onDeleteModPreset: () => void;
+  onToggleModEnabled: (modId: string) => void;
+  onOpenModDirectory: (modPath: string) => Promise<void>;
+  onRefreshMods: () => Promise<void>;
+  onImportLocalMod: () => Promise<void>;
+  serverConfigValues: ServerConfigValues;
+  setServerConfigValues: Dispatch<SetStateAction<ServerConfigValues>>;
+  missions: DayzMission[];
+  initGeneratorState: DayzInitGeneratorState;
+  setInitGeneratorState: Dispatch<SetStateAction<DayzInitGeneratorState>>;
+  initSelectedMissionName: string;
+  setInitSelectedMissionName: (value: string) => void;
+  initPreviewResult: DayzInitPreviewResult | null;
+  isInitPreviewPending: boolean;
+  isInitBackupPending: boolean;
+  isInitApplyPending: boolean;
+  initPresetNameInput: string;
+  setInitPresetNameInput: (value: string) => void;
+  initSelectedPresetId: string;
+  setInitSelectedPresetId: (value: string) => void;
+  onGenerateInitPreview: () => Promise<void>;
+  onBackupGeneratedInit: () => Promise<void>;
+  onApplyGeneratedInit: () => Promise<void>;
+  onSaveInitLoadoutPreset: () => void;
+  onLoadInitLoadoutPreset: () => void;
+  onDeleteInitLoadoutPreset: () => void;
+  clientPath: string;
+  setClientPath: (value: string) => void;
+  clientSettings: DayzServerClientSettings;
+  setClientSettings: Dispatch<SetStateAction<DayzServerClientSettings>>;
+  onPathChange: (label: string, value: string) => void;
+  onBrowseClientPath: () => Promise<void>;
+  onBrowsePath: (label: string) => Promise<void>;
+  onAutoScanServer: () => Promise<void>;
+  onSavePathOverrides: () => Promise<void>;
+  onResetPaths: () => Promise<void>;
+  onRefreshMissions: () => Promise<void>;
+  onOpenMissionsFolder: () => Promise<void>;
+};

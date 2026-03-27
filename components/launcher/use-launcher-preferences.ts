@@ -24,8 +24,21 @@ function getResolvedTheme(themeMode: LauncherPreferences["themeMode"]) {
 }
 
 export function useLauncherPreferences() {
-  const [preferences, setPreferences] = useState<LauncherPreferences>(defaultLauncherPreferences);
-  const [lastView, setLastView] = useState("dayz-server");
+  const [preferences, setPreferences] = useState<LauncherPreferences>(() => {
+    if (typeof window === "undefined") {
+      return defaultLauncherPreferences;
+    }
+
+    return normalizeLauncherPreferences(window.__DAYZ_LAUNCHER_BOOTSTRAP__?.preferences);
+  });
+  const [lastView, setLastView] = useState(() => {
+    if (typeof window === "undefined") {
+      return "dayz-server";
+    }
+
+    return window.__DAYZ_LAUNCHER_BOOTSTRAP__?.lastView || "dayz-server";
+  });
+  const [loaded, setLoaded] = useState(false);
   const hasHydratedRef = useRef(false);
   const fontSignatureRef = useRef("");
 
@@ -45,6 +58,8 @@ export function useLauncherPreferences() {
       } catch {
         setPreferences(defaultLauncherPreferences);
         setLastView("dayz-server");
+      } finally {
+        setLoaded(true);
       }
     });
 
@@ -52,35 +67,54 @@ export function useLauncherPreferences() {
   }, []);
 
   useEffect(() => {
+    if (!loaded) {
+      return;
+    }
+
     window.localStorage.setItem(launcherPreferencesStorageKey, JSON.stringify(preferences));
-  }, [preferences]);
+  }, [loaded, preferences]);
 
   useEffect(() => {
-    if (!preferences.rememberLastView) {
+    if (!loaded || !preferences.rememberLastView) {
       return;
     }
 
     window.localStorage.setItem(launcherLastViewStorageKey, lastView);
-  }, [lastView, preferences.rememberLastView]);
+  }, [lastView, loaded, preferences.rememberLastView]);
 
   useEffect(() => {
     const root = document.documentElement;
+    let cleanupTimeoutId: number | undefined;
+
     const applyTheme = () => {
+      root.dataset.themeSwitching = "true";
       const resolvedTheme = getResolvedTheme(preferences.themeMode);
       root.classList.toggle("dark", resolvedTheme === "dark");
       root.classList.toggle("light", resolvedTheme === "light");
+
+      window.clearTimeout(cleanupTimeoutId);
+      cleanupTimeoutId = window.setTimeout(() => {
+        delete root.dataset.themeSwitching;
+      }, 80);
     };
 
     applyTheme();
 
     if (preferences.themeMode !== "system") {
-      return;
+      return () => {
+        window.clearTimeout(cleanupTimeoutId);
+        delete root.dataset.themeSwitching;
+      };
     }
 
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const listener = () => applyTheme();
     media.addEventListener("change", listener);
-    return () => media.removeEventListener("change", listener);
+    return () => {
+      media.removeEventListener("change", listener);
+      window.clearTimeout(cleanupTimeoutId);
+      delete root.dataset.themeSwitching;
+    };
   }, [preferences.themeMode]);
 
   useEffect(() => {
@@ -147,11 +181,11 @@ export function useLauncherPreferences() {
     () => ({
       preferences,
       setPreferences,
-      loaded: true,
+      loaded,
       lastView,
       setLastView,
     }),
-    [lastView, preferences],
+    [lastView, loaded, preferences],
   );
 
   return api;

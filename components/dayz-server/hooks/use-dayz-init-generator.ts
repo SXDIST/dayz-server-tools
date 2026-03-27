@@ -11,6 +11,10 @@ type UseDayzInitGeneratorOptions = {
   activeMods: DayzInitActiveModRef[];
   initGeneratorState: DayzInitGeneratorState;
   setInitGeneratorState: Dispatch<SetStateAction<DayzInitGeneratorState>>;
+  presetNameInput: string;
+  setPresetNameInput: Dispatch<SetStateAction<string>>;
+  selectedPresetId: string;
+  setSelectedPresetId: Dispatch<SetStateAction<string>>;
 };
 
 function createPresetId(name: string) {
@@ -26,14 +30,16 @@ export function useDayzInitGenerator({
   activeMods,
   initGeneratorState,
   setInitGeneratorState,
+  presetNameInput,
+  setPresetNameInput,
+  selectedPresetId,
+  setSelectedPresetId,
 }: UseDayzInitGeneratorOptions) {
   const [selectedMissionName, setSelectedMissionName] = useState("");
   const [previewResult, setPreviewResult] = useState<DayzInitPreviewResult | null>(null);
   const [isPreviewPending, setIsPreviewPending] = useState(false);
   const [isBackupPending, setIsBackupPending] = useState(false);
   const [isApplyPending, setIsApplyPending] = useState(false);
-  const [presetNameInput, setPresetNameInput] = useState("");
-  const [selectedPresetId, setSelectedPresetId] = useState(initGeneratorState.loadoutPresets[0]?.id ?? "");
   const lastPreviewSignatureRef = useRef("");
 
   useEffect(() => {
@@ -49,17 +55,24 @@ export function useDayzInitGenerator({
   }, [activeMissionName, missions]);
 
   useEffect(() => {
-    if (!selectedPresetId && initGeneratorState.loadoutPresets[0]?.id) {
-      setSelectedPresetId(initGeneratorState.loadoutPresets[0].id);
+    const fallbackPresetId = initGeneratorState.loadoutPresets[0]?.id ?? "";
+
+    if (!selectedPresetId && fallbackPresetId) {
+      setSelectedPresetId(fallbackPresetId);
+      return;
     }
-  }, [initGeneratorState.loadoutPresets, selectedPresetId]);
+
+    if (selectedPresetId && !initGeneratorState.loadoutPresets.some((preset) => preset.id === selectedPresetId)) {
+      setSelectedPresetId(fallbackPresetId);
+    }
+  }, [initGeneratorState.loadoutPresets, selectedPresetId, setSelectedPresetId]);
 
   useEffect(() => {
     const preset = initGeneratorState.loadoutPresets.find((entry) => entry.id === selectedPresetId);
     if (preset) {
       setPresetNameInput(preset.name);
     }
-  }, [initGeneratorState.loadoutPresets, selectedPresetId]);
+  }, [initGeneratorState.loadoutPresets, selectedPresetId, setPresetNameInput]);
 
   const selectedMission = useMemo(
     () => missions.find((mission) => mission.name === selectedMissionName) ?? null,
@@ -249,7 +262,7 @@ export function useDayzInitGenerator({
 
     setSelectedPresetId(presetId);
     appendPreviewLog(`[init] Saved loadout preset ${rawName}.`);
-  }, [appendPreviewLog, initGeneratorState.loadoutPresets, presetNameInput, setInitGeneratorState]);
+  }, [appendPreviewLog, initGeneratorState.loadoutPresets, presetNameInput, setInitGeneratorState, setSelectedPresetId]);
 
   const loadSelectedPreset = useCallback(() => {
     const preset = initGeneratorState.loadoutPresets.find((entry) => entry.id === selectedPresetId);
@@ -266,7 +279,7 @@ export function useDayzInitGenerator({
 
     setPresetNameInput(preset.name);
     appendPreviewLog(`[init] Loaded loadout preset ${preset.name}.`);
-  }, [appendPreviewLog, initGeneratorState.loadoutPresets, selectedPresetId, setInitGeneratorState]);
+  }, [appendPreviewLog, initGeneratorState.loadoutPresets, selectedPresetId, setInitGeneratorState, setPresetNameInput]);
 
   const deleteSelectedPreset = useCallback(() => {
     const preset = initGeneratorState.loadoutPresets.find((entry) => entry.id === selectedPresetId);
@@ -283,7 +296,7 @@ export function useDayzInitGenerator({
 
     setSelectedPresetId("");
     appendPreviewLog(`[init] Removed loadout preset ${preset.name}.`);
-  }, [appendPreviewLog, initGeneratorState.loadoutPresets, selectedPresetId, setInitGeneratorState]);
+  }, [appendPreviewLog, initGeneratorState.loadoutPresets, selectedPresetId, setInitGeneratorState, setSelectedPresetId]);
 
   return {
     selectedMissionName,

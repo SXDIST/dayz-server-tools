@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { BackgroundStars } from "@/components/background-stars";
+import { CrashToolsPage } from "@/components/crash-tools/page";
 import { DayzServerPage } from "@/components/dayz-server/page";
-import { modules, type ModuleId } from "@/components/launcher/constants";
-import { AppSidebar } from "@/components/launcher/app-sidebar";
+import { ImageToPaaPage } from "@/components/image-to-paa/page";
+import { AppHeader } from "@/components/launcher/app-header";
+import type { ModuleId } from "@/components/launcher/constants";
 import { PlaceholderModule } from "@/components/launcher/placeholder-module";
 import { launcherLastViewStorageKey } from "@/components/launcher/preferences";
 import { SettingsPage } from "@/components/launcher/settings-page";
 import { useLauncherPreferences } from "@/components/launcher/use-launcher-preferences";
-import { Badge } from "@/components/ui/badge";
 
 export function LauncherShell() {
   const {
@@ -21,11 +22,6 @@ export function LauncherShell() {
   } = useLauncherPreferences();
   const [activeView, setActiveView] = useState<ModuleId | "settings">("dayz-server");
   const restoredViewRef = useRef(false);
-
-  const activeModuleData = useMemo(
-    () => modules.find((item) => item.id === activeView) ?? modules[0],
-    [activeView],
-  );
 
   const handleSelectView = (view: ModuleId | "settings") => {
     setActiveView(view);
@@ -61,7 +57,9 @@ export function LauncherShell() {
       case "settings":
         return <SettingsPage preferences={preferences} setPreferences={setPreferences} />;
       case "image-to-paa":
-        return <PlaceholderModule title="Image To PAA" description="Future module for image conversion to PAA." />;
+        return <ImageToPaaPage />;
+      case "crash-tools":
+        return <CrashToolsPage />;
       case "rvmat-editor":
         return <PlaceholderModule title="RVMAT Editor" description="Future material editor workspace." />;
       case "model-tools":
@@ -70,30 +68,17 @@ export function LauncherShell() {
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
+    <main className="relative h-screen overflow-hidden bg-background text-foreground">
       {preferences.backgroundEffects ? <BackgroundStars /> : null}
-      <div className="launcher-shell-grid grid min-h-screen grid-cols-[260px_minmax(0,1fr)] items-start">
-        <AppSidebar
+      <div className="flex h-full flex-col overflow-hidden">
+        <AppHeader
           activeView={activeView}
-          onSelectModule={handleSelectView}
-          compactSidebar={preferences.compactSidebar}
+          onSelectView={handleSelectView}
         />
-
-        <section className="relative z-10 min-w-0 p-5 pl-4">
-          {activeView === "dayz-server" || activeView === "settings" ? (
-            renderContent()
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h1 className="text-3xl font-semibold text-foreground">{activeModuleData.name}</h1>
-                  <p className="mt-1 text-sm text-muted-foreground">{activeModuleData.note}</p>
-                </div>
-                <Badge variant="secondary">{activeModuleData.status}</Badge>
-              </div>
-              {renderContent()}
-            </div>
-          )}
+        <section className="relative z-10 mt-[5.5rem] min-w-0 h-[calc(100vh-5.5rem)] overflow-y-auto">
+          <div className="px-4 pb-4 pt-3">
+            {renderContent()}
+          </div>
         </section>
       </div>
     </main>

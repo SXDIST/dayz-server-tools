@@ -108,7 +108,7 @@ export function applyEnabledTokensToMods(mods: DayzParsedMod[], tokens: string[]
 
     return {
       ...mod,
-      enabled: candidates.some((candidate) => enabledSet.has(candidate)) || mod.enabled,
+      enabled: candidates.some((candidate) => enabledSet.has(candidate)),
     };
   });
 }
@@ -184,7 +184,7 @@ export function createFallbackRuntime(): DayzServerRuntime {
       id: `fallback-${index}`,
       level: "info",
       line,
-      timestamp: new Date().toISOString(),
+      timestamp: "",
     })),
   };
 }

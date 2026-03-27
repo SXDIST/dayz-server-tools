@@ -1,26 +1,69 @@
 "use client";
 
 import type { ComponentType, Dispatch, SetStateAction } from "react";
-import { Clock3, CloudSun, FileCode2, Package, Pin, PlugZap, Save, Sparkles, Wrench } from "lucide-react";
+import { Clock3, CloudSun, FileCode2, Package, Pin, PlugZap, Wrench } from "lucide-react";
 
 import { SelectField, ToggleField } from "@/components/dayz-server/form-controls";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+
+const CHARACTER_OPTIONS = [
+  {
+    groupLabel: "Men",
+    options: [
+      { value: "", label: "Mission Default / Random" },
+      { value: "SurvivorM_Boris", label: "Boris" },
+      { value: "SurvivorM_Cyril", label: "Cyril" },
+      { value: "SurvivorM_Elias", label: "Elias" },
+      { value: "SurvivorM_Francis", label: "Francis" },
+      { value: "SurvivorM_Guo", label: "Guo" },
+      { value: "SurvivorM_Hassan", label: "Hassan" },
+      { value: "SurvivorM_Indar", label: "Indar" },
+      { value: "SurvivorM_Jose", label: "Jose" },
+      { value: "SurvivorM_Lewis", label: "Lewis" },
+      { value: "SurvivorM_Manua", label: "Manua" },
+      { value: "SurvivorM_Mirek", label: "Mirek" },
+      { value: "SurvivorM_Niki", label: "Niki" },
+      { value: "SurvivorM_Oliver", label: "Oliver" },
+      { value: "SurvivorM_Peter", label: "Peter" },
+      { value: "SurvivorM_Quinn", label: "Quinn" },
+      { value: "SurvivorM_Rolf", label: "Rolf" },
+      { value: "SurvivorM_Seth", label: "Seth" },
+      { value: "SurvivorM_Taiki", label: "Taiki" },
+    ],
+  },
+  {
+    groupLabel: "Women",
+    options: [
+      { value: "SurvivorF_Eva", label: "Eva" },
+      { value: "SurvivorF_Frida", label: "Frida" },
+      { value: "SurvivorF_Gabi", label: "Gabi" },
+      { value: "SurvivorF_Helga", label: "Helga" },
+      { value: "SurvivorF_Irena", label: "Irena" },
+      { value: "SurvivorF_Judy", label: "Judy" },
+      { value: "SurvivorF_Keiko", label: "Keiko" },
+      { value: "SurvivorF_Linda", label: "Linda" },
+      { value: "SurvivorF_Maria", label: "Maria" },
+      { value: "SurvivorF_Naomi", label: "Naomi" },
+    ],
+  },
+];
 
 function FieldGroup({
   title,
   description,
   icon: Icon,
   tone = "default",
+  className,
   children,
 }: {
   title: string;
   description?: string;
   icon: ComponentType<{ className?: string }>;
   tone?: "default" | "sky" | "amber" | "emerald" | "violet" | "rose";
+  className?: string;
   children: React.ReactNode;
 }) {
   const toneClasses: Record<NonNullable<typeof tone>, string> = {
@@ -33,8 +76,8 @@ function FieldGroup({
   };
 
   return (
-    <Card className={cn("overflow-visible rounded-2xl shadow-none", toneClasses[tone])}>
-      <CardHeader className="space-y-1 px-4 py-4">
+    <Card className={cn("overflow-visible rounded-2xl shadow-none", toneClasses[tone], className)}>
+      <CardHeader className="space-y-1 px-4 py-3">
         <div className="flex items-center gap-3">
           <div className="flex size-8 items-center justify-center rounded-lg border border-border/60 bg-background/50">
             <Icon className="size-4 text-muted-foreground" />
@@ -45,7 +88,7 @@ function FieldGroup({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4 px-4 pb-4">{children}</CardContent>
+      <CardContent className="space-y-3 px-4 pb-4">{children}</CardContent>
     </Card>
   );
 }
@@ -83,9 +126,6 @@ function TextareaField(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>)
 }
 
 type InitGeneratorPanelProps = {
-  missions: DayzMission[];
-  selectedMissionName: string;
-  setSelectedMissionName: (value: string) => void;
   initGeneratorState: DayzInitGeneratorState;
   setInitGeneratorState: Dispatch<SetStateAction<DayzInitGeneratorState>>;
   presetNameInput: string;
@@ -105,9 +145,6 @@ type InitGeneratorPanelProps = {
 };
 
 export function InitGeneratorPanel({
-  missions,
-  selectedMissionName,
-  setSelectedMissionName,
   initGeneratorState,
   setInitGeneratorState,
   presetNameInput,
@@ -117,13 +154,7 @@ export function InitGeneratorPanel({
   onSavePreset,
   onLoadPreset,
   onDeletePreset,
-  onGeneratePreview,
-  onBackup,
-  onApply,
   previewResult,
-  isPreviewPending,
-  isBackupPending,
-  isApplyPending,
 }: InitGeneratorPanelProps) {
   const isRandomWeather = initGeneratorState.weather.mode === "random";
   const isFixedSpawn = initGeneratorState.spawn.mode === "fixed";
@@ -176,51 +207,9 @@ export function InitGeneratorPanel({
   };
 
   return (
-    <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_460px]">
+    <div className="grid gap-4 2xl:min-h-[calc(100vh-12rem)] 2xl:grid-cols-[minmax(0,1fr)_420px] 2xl:items-stretch">
       <div className="space-y-4">
-        <FieldGroup
-          title="Init.c Generator"
-          description="Vanilla-style mission template for test servers with managed updates and backups."
-          icon={Sparkles}
-          tone="default"
-        >
-          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="grid gap-3 md:grid-cols-2">
-              <LabeledField label="Mission" description="Target mission folder for init.c generation.">
-                <SelectField
-                  value={selectedMissionName || missions[0]?.name || ""}
-                  options={missions.length > 0 ? missions.map((mission) => mission.name) : ["No missions found"]}
-                  onValueChange={setSelectedMissionName}
-                />
-              </LabeledField>
-              <LabeledField label="Workflow" description="Preview first, then back up or apply when you're ready.">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="secondary">Vanilla Base</Badge>
-                  <Badge variant="secondary">Managed Update</Badge>
-                  <Badge variant="secondary">Preview / Backup / Apply</Badge>
-                </div>
-              </LabeledField>
-            </div>
-            <div className="flex flex-wrap items-start gap-3">
-              <div className="inline-flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-background/40 p-1">
-                <Button variant="ghost" onClick={() => void onGeneratePreview()} disabled={isPreviewPending}>
-                  <FileCode2 className="size-4" />
-                  {isPreviewPending ? "Generating..." : "Generate Preview"}
-                </Button>
-                <Button variant="outline" onClick={() => void onBackup()} disabled={isBackupPending}>
-                  <Save className="size-4" />
-                  {isBackupPending ? "Backing Up..." : "Backup"}
-                </Button>
-                <Button variant="default" onClick={() => void onApply()} disabled={isApplyPending}>
-                  <Save className="size-4" />
-                  {isApplyPending ? "Applying..." : "Apply"}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </FieldGroup>
-
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 2xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,0.8fr)]">
           <FieldGroup
             title="Weather"
             description="Clouds, rain, fog, wind and storm setup for stable mod testing."
@@ -355,7 +344,7 @@ export function InitGeneratorPanel({
           </FieldGroup>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 2xl:grid-cols-[minmax(0,1.1fr)_minmax(380px,0.9fr)]">
           <FieldGroup
             title="Starter Loadout"
             description="Clothing, weapons, attachments and inventory groups."
@@ -392,6 +381,16 @@ export function InitGeneratorPanel({
             </div>
             {hasAutoEquipLoadout ? (
               <>
+                <LabeledField
+                  label="Character"
+                  description="Select a specific survivor model for the spawned player."
+                >
+                  <SelectField
+                    value={initGeneratorState.loadout.characterClass}
+                    options={CHARACTER_OPTIONS}
+                    onValueChange={(value) => updateLoadout("characterClass", value)}
+                  />
+                </LabeledField>
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   <Input value={initGeneratorState.loadout.body} onChange={(event) => updateLoadout("body", event.target.value)} placeholder="Body clothing" />
                   <Input value={initGeneratorState.loadout.legs} onChange={(event) => updateLoadout("legs", event.target.value)} placeholder="Legs clothing" />
@@ -488,25 +487,36 @@ export function InitGeneratorPanel({
         </div>
       </div>
 
-      <div className="2xl:sticky 2xl:top-3 2xl:self-start">
+      <div className="flex h-full flex-col 2xl:sticky 2xl:top-3 2xl:self-stretch">
         <FieldGroup
           title="Preview"
           description="Generated init.c output. Existing files are backed up before the first write."
           icon={FileCode2}
           tone="default"
+          className="flex h-full flex-col"
         >
           <div className="flex flex-wrap gap-2">
             {previewResult ? (
               <>
-                <Badge variant="secondary">{previewResult.mode}</Badge>
-                <Badge variant="secondary">{previewResult.hasExistingInit ? "Existing init.c" : "New init.c"}</Badge>
-                {previewResult.usesManagedBlock ? <Badge variant="secondary">Managed Update</Badge> : null}
+                <span className="rounded-lg border border-border/60 bg-background/40 px-2.5 py-1 text-xs text-muted-foreground">
+                  {previewResult.mode}
+                </span>
+                <span className="rounded-lg border border-border/60 bg-background/40 px-2.5 py-1 text-xs text-muted-foreground">
+                  {previewResult.hasExistingInit ? "Existing init.c" : "New init.c"}
+                </span>
+                {previewResult.usesManagedBlock ? (
+                  <span className="rounded-lg border border-border/60 bg-background/40 px-2.5 py-1 text-xs text-muted-foreground">
+                    Managed Update
+                  </span>
+                ) : null}
               </>
             ) : (
-              <Badge variant="secondary">Waiting for preview</Badge>
+              <span className="rounded-lg border border-border/60 bg-background/40 px-2.5 py-1 text-xs text-muted-foreground">
+                Waiting for preview
+              </span>
             )}
           </div>
-          <pre className="max-h-[720px] overflow-auto rounded-xl border border-border/60 bg-background/60 p-4 font-mono text-xs leading-6 text-zinc-200">
+          <pre className="code-surface h-[calc(100vh-18rem)] min-h-[620px] flex-1 overflow-auto rounded-xl border border-border/60 p-4 font-mono text-xs leading-6 2xl:h-[calc(100vh-14rem)]">
             {previewResult?.preview || "// Generate preview to inspect the final init.c output."}
           </pre>
         </FieldGroup>

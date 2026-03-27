@@ -32,8 +32,11 @@ export function DayzServerPage() {
     scanWorkshopMods: mods.scanWorkshopMods,
     setDetectedModsFromScan: mods.setDetectedMods,
     applyImportedLocalModPaths: mods.applyImportedLocalModPaths,
+    hydrateModPresets: mods.hydrateModPresets,
     preferredModTokensRef,
     serverMods: mods.serverMods,
+    modPresets: mods.modPresets,
+    selectedModPresetId: mods.selectedModPresetId,
   });
 
   const workspaceState = workspace;
@@ -58,6 +61,10 @@ export function DayzServerPage() {
     activeMods: initActiveMods,
     initGeneratorState: workspace.initGeneratorState,
     setInitGeneratorState: workspace.setInitGeneratorState,
+    presetNameInput: workspace.initPresetNameInput,
+    setPresetNameInput: workspace.setInitPresetNameInput,
+    selectedPresetId: workspace.selectedInitLoadoutPresetId,
+    setSelectedPresetId: workspace.setSelectedInitLoadoutPresetId,
   });
 
   const preferredModTokens = useMemo(() => {
@@ -201,7 +208,18 @@ export function DayzServerPage() {
       return;
     }
 
+    runtime.setIsClientPending(true);
+
     try {
+      runtime.appendPreviewLog("[client] Preparing local DayZ client launch...");
+      runtime.appendPreviewLog(
+        `[client] Display ${workspace.clientSettings.displayMode} at ${workspace.clientSettings.resolution}`,
+      );
+      runtime.appendPreviewLog(
+        `[client] Enabled mods: ${
+          mods.serverMods.filter((mod) => mod.enabled).map((mod) => mod.displayName).join(", ") || "none"
+        }`,
+      );
       const [resolutionWidth, resolutionHeight] = workspace.clientSettings.resolution
         .toLowerCase()
         .split("x")
@@ -217,15 +235,88 @@ export function DayzServerPage() {
         resolutionWidth,
         resolutionHeight,
       });
-
-      runtime.appendPreviewLog(`[launcher] Launched DayZ client with ${result.args.join(" ")}`);
+      runtime.appendPreviewLog(`[client] Launch accepted for ${result.executablePath}`);
     } catch (error) {
       runtime.appendPreviewLog(
         `[launcher] ${error instanceof Error ? error.message : "Failed to launch DayZ client."}`,
         "stderr",
       );
+    } finally {
+      runtime.setIsClientPending(false);
     }
   }, [dayzApi, mods.serverMods, runtime, workspace.clientPath, workspace.clientSettings, workspace.serverConfigValues.battlEye]);
+
+  const handleStopClient = useCallback(async () => {
+    if (!dayzApi) {
+      runtime.appendPreviewLog("[client] Client stop works in the Electron desktop build.");
+      runtime.setClientRuntime({
+        status: "stopped",
+        pid: null,
+        startedAt: null,
+        executablePath: null,
+        launchArgs: [],
+      });
+      return;
+    }
+
+    runtime.setIsClientPending(true);
+
+    try {
+      await dayzApi.stopClient();
+    } catch (error) {
+      runtime.appendPreviewLog(
+        `[client] ${error instanceof Error ? error.message : "Failed to stop DayZ client."}`,
+        "stderr",
+      );
+    } finally {
+      runtime.setIsClientPending(false);
+    }
+  }, [dayzApi, runtime]);
+
+  const handleOpenModDirectory = useCallback(
+    async (modPath: string) => {
+      if (!dayzApi) {
+        return;
+      }
+
+      try {
+        await dayzApi.openPath(modPath);
+      } catch (error) {
+        runtime.appendPreviewLog(
+          `[mods] ${error instanceof Error ? error.message : "Failed to open mod folder."}`,
+          "stderr",
+        );
+      }
+    },
+    [dayzApi, runtime],
+  );
+
+  const handleOpenMissionsFolder = useCallback(async () => {
+    const configuredMissionsPath = (workspace.pathValues.mpmissions ?? "").trim();
+    const activeMission =
+      workspace.missions.find((mission) => mission.name === workspace.serverConfigValues.template) ??
+      workspace.missions[0] ??
+      null;
+    const activeMissionPath = (activeMission?.path ?? "").trim();
+    const derivedMissionsRoot = activeMissionPath.replace(/[\\/][^\\/]+$/, "");
+    const missionsPath = configuredMissionsPath || derivedMissionsRoot || activeMissionPath;
+
+    if (!dayzApi || !missionsPath) {
+      runtime.appendPreviewLog("[missions] Missions folder path is not available yet.", "stderr");
+      return;
+    }
+
+    try {
+      runtime.appendPreviewLog(`[missions] Opening ${missionsPath}`);
+      await dayzApi.openPath(missionsPath);
+      runtime.appendPreviewLog("[missions] Missions folder opened.");
+    } catch (error) {
+      runtime.appendPreviewLog(
+        `[missions] ${error instanceof Error ? error.message : "Failed to open missions folder."}`,
+        "stderr",
+      );
+    }
+  }, [dayzApi, runtime, workspace.missions, workspace.pathValues.mpmissions, workspace.serverConfigValues.template]);
 
   return (
     <DayzServerWorkspace
@@ -236,19 +327,34 @@ export function DayzServerPage() {
         });
       }}
       runtime={runtime.serverRuntime}
+      clientRuntime={runtime.clientRuntime}
       isServerPending={runtime.isServerPending}
+      isClientPending={runtime.isClientPending}
       onStart={handleStartServer}
       onStop={handleStopServer}
       onRestart={handleRestartServer}
       onLaunchClient={handleLaunchClient}
+      onStopClient={handleStopClient}
       modsSearch={mods.modsSearch}
       setModsSearch={mods.setModsSearch}
       pathValues={workspace.pathValues}
       enabledMods={mods.enabledMods}
       availableWorkshopMods={mods.availableWorkshopMods}
       availableLocalMods={mods.availableLocalMods}
+      modPresets={mods.modPresets}
+      modPresetNameInput={mods.modPresetNameInput}
+      setModPresetNameInput={mods.setModPresetNameInput}
+      selectedModPresetId={mods.selectedModPresetId}
+      setSelectedModPresetId={mods.setSelectedModPresetId}
+      onSaveModPreset={mods.saveCurrentModPreset}
+      onLoadModPreset={mods.loadSelectedModPreset}
+      onDeleteModPreset={mods.deleteSelectedModPreset}
       onToggleModEnabled={mods.toggleModEnabled}
-      onRefreshMods={() => mods.scanServerMods(mods.getRefreshTargetRoot(workspace.pathValues))}
+      onOpenModDirectory={handleOpenModDirectory}
+      onRefreshMods={async () => {
+        const targetRoot = mods.getRefreshTargetRoot(workspace.pathValues);
+        await Promise.all([mods.scanServerMods(targetRoot), mods.scanWorkshopMods(targetRoot)]);
+      }}
       onImportLocalMod={mods.importLocalMod}
       serverConfigValues={workspace.serverConfigValues}
       setServerConfigValues={workspace.setServerConfigValues}
@@ -287,6 +393,7 @@ export function DayzServerPage() {
       onSavePathOverrides={workspace.handleSavePathOverrides}
       onResetPaths={workspace.handleResetPaths}
       onRefreshMissions={() => workspace.scanMissions(workspace.pathValues.mpmissions ?? "")}
+      onOpenMissionsFolder={handleOpenMissionsFolder}
     />
   );
 }

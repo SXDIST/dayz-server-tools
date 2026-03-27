@@ -1,0 +1,139 @@
+"use client";
+
+import { InitGeneratorPanel } from "@/components/dayz-server/init-generator-panel";
+import { Section } from "@/components/dayz-server/workspace-shared";
+import type { DayzServerWorkspaceProps } from "@/components/dayz-server/workspace-types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+
+type MissionsPageProps = Pick<
+  DayzServerWorkspaceProps,
+  | "missions"
+  | "serverConfigValues"
+  | "setServerConfigValues"
+  | "onRefreshMissions"
+  | "onOpenMissionsFolder"
+  | "initSelectedMissionName"
+  | "setInitSelectedMissionName"
+  | "initGeneratorState"
+  | "setInitGeneratorState"
+  | "initPresetNameInput"
+  | "setInitPresetNameInput"
+  | "initSelectedPresetId"
+  | "setInitSelectedPresetId"
+  | "onSaveInitLoadoutPreset"
+  | "onLoadInitLoadoutPreset"
+  | "onDeleteInitLoadoutPreset"
+  | "onGenerateInitPreview"
+  | "onBackupGeneratedInit"
+  | "onApplyGeneratedInit"
+  | "initPreviewResult"
+  | "isInitPreviewPending"
+  | "isInitBackupPending"
+  | "isInitApplyPending"
+>;
+
+export function MissionsPage(props: MissionsPageProps) {
+  return (
+    <Section title="Missions" description="Detected mission folders from mpmissions with quick selection for Server.cfg and init.c generation.">
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-border/60 bg-muted/15 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Mission Folders</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Pick the active mission and inspect its current files.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => void props.onOpenMissionsFolder()}>
+                Open Missions Folder
+              </Button>
+              <Button size="sm" variant="default" onClick={() => void props.onRefreshMissions()}>
+                Refresh Missions
+              </Button>
+            </div>
+          </div>
+          <div className="mt-3 overflow-x-auto pb-1">
+            <div className="flex min-w-max gap-2">
+            {props.missions.map((mission) => {
+              const isActive = props.serverConfigValues.template === mission.name;
+
+              return (
+                <div
+                  key={mission.id}
+                  className={`w-[520px] shrink-0 rounded-2xl border p-5 transition-colors ${
+                    isActive
+                      ? "border-primary/35 bg-primary/8"
+                      : "border-border/60 bg-background/40 hover:bg-background/55"
+                  }`}
+                >
+                  <div className="flex h-full flex-col justify-between gap-6">
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge className="px-2.5 py-0.5 text-[10px]" variant="secondary">
+                          {mission.mapName}
+                        </Badge>
+                        {isActive ? <Badge className="px-2.5 py-0.5 text-[10px]">Active Mission</Badge> : null}
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-lg font-semibold leading-none text-foreground">{mission.name}</p>
+                        <p className="max-w-[42ch] text-sm leading-6 text-muted-foreground">
+                          {isActive
+                            ? "Currently used by Server.cfg and ready for mission generation."
+                            : "Available mission preset for quick switching and init.c generation."}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                        {isActive ? "In Use" : "Available"}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={isActive ? "secondary" : "outline"}
+                        onClick={() => {
+                          props.setServerConfigValues((current) => ({
+                            ...current,
+                            template: mission.name,
+                          }));
+                          props.setInitSelectedMissionName(mission.name);
+                        }}
+                      >
+                        {isActive ? "Selected" : "Use Mission"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {props.missions.length === 0 ? (
+              <div className="w-full rounded-xl border border-dashed border-border/60 px-3 py-8 text-center text-sm text-muted-foreground">
+                No missions were found in the current mpmissions folder.
+              </div>
+            ) : null}
+            </div>
+          </div>
+        </div>
+        <InitGeneratorPanel
+          initGeneratorState={props.initGeneratorState}
+          setInitGeneratorState={props.setInitGeneratorState}
+          presetNameInput={props.initPresetNameInput}
+          setPresetNameInput={props.setInitPresetNameInput}
+          selectedPresetId={props.initSelectedPresetId}
+          setSelectedPresetId={props.setInitSelectedPresetId}
+          onSavePreset={props.onSaveInitLoadoutPreset}
+          onLoadPreset={props.onLoadInitLoadoutPreset}
+          onDeletePreset={props.onDeleteInitLoadoutPreset}
+          onGeneratePreview={props.onGenerateInitPreview}
+          onBackup={props.onBackupGeneratedInit}
+          onApply={props.onApplyGeneratedInit}
+          previewResult={props.initPreviewResult}
+          isPreviewPending={props.isInitPreviewPending}
+          isBackupPending={props.isInitBackupPending}
+          isApplyPending={props.isInitApplyPending}
+        />
+      </div>
+    </Section>
+  );
+}

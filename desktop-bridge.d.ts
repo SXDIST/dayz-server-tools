@@ -2,6 +2,7 @@ export {};
 
 declare global {
   type DayzServerStatus = "stopped" | "starting" | "running";
+  type DayzClientStatus = "stopped" | "launching" | "running";
 
   interface DayzServerLogEntry {
     id: string;
@@ -12,6 +13,7 @@ declare global {
 
   interface DayzDetectedPaths {
     serverRoot: string;
+    serverMods: string;
     profiles: string;
     keys: string;
     battleye: string;
@@ -28,6 +30,14 @@ declare global {
     executablePath: string | null;
     launchArgs: string[];
     logs: DayzServerLogEntry[];
+  }
+
+  interface DayzClientRuntime {
+    status: DayzClientStatus;
+    pid: number | null;
+    startedAt: string | null;
+    executablePath: string | null;
+    launchArgs: string[];
   }
 
   interface DayzServerLaunchOptions {
@@ -111,6 +121,7 @@ declare global {
   }
 
   interface DayzInitLoadoutSettings {
+    characterClass: string;
     body: string;
     legs: string;
     feet: string;
@@ -227,6 +238,47 @@ declare global {
     isFullySigned: boolean;
   }
 
+  interface DayzCrashArtifact {
+    id: string;
+    kind: "rpt" | "script" | "crash" | "mdmp";
+    name: string;
+    path: string;
+    sizeBytes: number;
+    modifiedAt: string;
+  }
+
+  interface DayzCrashAnalysis {
+    severity: "info" | "warning" | "error";
+    summary: string;
+    probableCause: string;
+    exceptionCode: string;
+    signals: string[];
+    recommendations: string[];
+  }
+
+  interface DayzCrashSnapshot {
+    profilesPath: string;
+    artifacts: DayzCrashArtifact[];
+    latest: {
+      rpt: DayzCrashArtifact | null;
+      script: DayzCrashArtifact | null;
+      crash: DayzCrashArtifact | null;
+      mdmp: DayzCrashArtifact | null;
+    };
+    excerpts: {
+      rpt: string[];
+      script: string[];
+      crash: string[];
+    };
+    analysis: DayzCrashAnalysis;
+  }
+
+  interface DayzModPreset {
+    id: string;
+    name: string;
+    enabledModPaths: string[];
+  }
+
   interface DayzWorkspaceState {
     paths: Record<string, string>;
     clientPath: string;
@@ -235,14 +287,23 @@ declare global {
       resolution: string;
     };
     enabledModPaths: string[];
+    modPresets?: DayzModPreset[];
+    selectedModPresetId?: string;
     importedLocalModPaths: string[];
     serverConfigValues: Record<string, unknown>;
     initGeneratorState?: DayzInitGeneratorState;
+    selectedInitLoadoutPresetId?: string;
+    initPresetNameInput?: string;
   }
 
   interface DesktopBridge {
     platform: string;
     isElectron: boolean;
+    app: {
+      minimizeWindow: () => Promise<void>;
+      toggleMaximizeWindow: () => Promise<boolean>;
+      closeWindow: () => Promise<void>;
+    };
     dayz: {
       pickFolder: (options?: { defaultPath?: string }) => Promise<string | null>;
       pickExecutable: (options?: { defaultPath?: string }) => Promise<string | null>;
@@ -250,6 +311,7 @@ declare global {
       detectServerPaths: (serverRoot: string) => Promise<DayzDetectedPaths>;
       autoDetectServerPaths: () => Promise<DayzDetectedPaths>;
       getServerRuntime: () => Promise<DayzServerRuntime>;
+      getClientRuntime: () => Promise<DayzClientRuntime>;
       startServer: (options: DayzServerLaunchOptions) => Promise<DayzServerRuntime>;
       stopServer: () => Promise<DayzServerRuntime>;
       restartServer: (options: DayzServerLaunchOptions) => Promise<DayzServerRuntime>;
@@ -263,15 +325,35 @@ declare global {
       scanMods: (serverRoot: string) => Promise<DayzParsedMod[]>;
       scanWorkshopMods: (serverRoot: string) => Promise<DayzParsedMod[]>;
       inspectModFolder: (modRoot: string) => Promise<DayzParsedMod>;
+      scanCrashTools: (profilesPath: string) => Promise<DayzCrashSnapshot>;
+      openPath: (targetPath: string) => Promise<void>;
       launchClient: (options: DayzClientLaunchOptions) => Promise<DayzClientLaunchResult>;
+      stopClient: () => Promise<DayzClientRuntime>;
       getWorkspaceState: () => Promise<DayzWorkspaceState>;
       saveWorkspaceState: (state: DayzWorkspaceState) => Promise<DayzWorkspaceState>;
       onServerLog: (callback: (entry: DayzServerLogEntry) => void) => () => void;
       onServerStatus: (callback: (runtime: DayzServerRuntime) => void) => () => void;
+      onClientStatus: (callback: (runtime: DayzClientRuntime) => void) => () => void;
     };
   }
 
-  interface Window {
-    desktopBridge?: DesktopBridge;
+    interface Window {
+      desktopBridge?: DesktopBridge;
+      __DAYZ_LAUNCHER_BOOTSTRAP__?: {
+        preferences?: {
+          themeMode?: "system" | "light" | "dark";
+          interfaceMode?: "sans" | "mono";
+          interfaceSansFont?: "inter" | "geist" | "noto-sans" | "roboto";
+          interfaceMonoFont?: "jetbrains-mono" | "geist-mono";
+          headingMode?: "sans" | "mono";
+          headingSansFont?: "inter" | "geist" | "noto-sans" | "roboto";
+          headingMonoFont?: "jetbrains-mono" | "geist-mono";
+          backgroundEffects?: boolean;
+          reduceMotion?: boolean;
+          compactSidebar?: boolean;
+          rememberLastView?: boolean;
+        };
+        lastView?: string;
+      };
+    }
   }
-}

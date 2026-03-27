@@ -11,7 +11,14 @@ export function SelectField({
   onValueChange,
 }: {
   value: string;
-  options: Array<string | { label: string; value: string }>;
+  options: Array<
+    | string
+    | { label: string; value: string }
+    | {
+        groupLabel: string;
+        options: Array<string | { label: string; value: string }>;
+      }
+  >;
   onValueChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -28,7 +35,15 @@ export function SelectField({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const selectedOption = options.find((option) =>
+  const flatOptions = options.flatMap((option) => {
+    if (typeof option === "string" || ("value" in option && "label" in option)) {
+      return [option];
+    }
+
+    return option.options;
+  });
+
+  const selectedOption = flatOptions.find((option) =>
     typeof option === "string" ? option === value : option.value === value,
   );
   const selectedLabel =
@@ -49,8 +64,41 @@ export function SelectField({
 
       {open ? (
         <div className="animate-[panel-fade_180ms_ease-out] absolute left-0 top-full z-20 mt-1 w-full rounded-xl border border-border bg-popover p-2 shadow-lg">
-          <div className="space-y-1">
+          <div className="max-h-80 space-y-1 overflow-auto pr-1">
             {options.map((option) => {
+              if (typeof option !== "string" && "groupLabel" in option) {
+                return (
+                  <div key={option.groupLabel} className="space-y-1 py-1">
+                    <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/80">
+                      {option.groupLabel}
+                    </div>
+                    {option.options.map((groupOption) => {
+                      const optionValue = typeof groupOption === "string" ? groupOption : groupOption.value;
+                      const optionLabel = typeof groupOption === "string" ? groupOption : groupOption.label;
+
+                      return (
+                        <button
+                          key={optionValue}
+                          type="button"
+                          onClick={() => {
+                            onValueChange(optionValue);
+                            setOpen(false);
+                          }}
+                          className={cn(
+                            "w-full rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                            value === optionValue
+                              ? "bg-accent text-accent-foreground"
+                              : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                          )}
+                        >
+                          {optionLabel}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              }
+
               const optionValue = typeof option === "string" ? option : option.value;
               const optionLabel = typeof option === "string" ? option : option.label;
 

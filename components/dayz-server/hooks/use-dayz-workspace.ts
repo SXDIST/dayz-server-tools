@@ -5,9 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObjec
 import {
   BATTLEYE_LABEL,
   DAYZ_SERVER_ROOT_LABEL,
-  PROFILES_LABEL,
   KEYS_LABEL,
   MPMISSIONS_LABEL,
+  PROFILES_LABEL,
+  SERVER_MODS_LABEL,
   defaultClientSettings,
   defaultServerConfigValues,
   serverPaths,
@@ -21,6 +22,7 @@ import {
   mapConfigSnapshotToForm,
   sanitizePersistedServerConfigValues,
 } from "@/components/dayz-server/utils";
+import type { DayzServerModPreset } from "@/components/dayz-server/workspace-types";
 
 type UseDayzWorkspaceOptions = {
   dayzApi: DesktopBridge["dayz"] | undefined;
@@ -30,8 +32,11 @@ type UseDayzWorkspaceOptions = {
   scanWorkshopMods: (serverRoot: string) => Promise<void>;
   setDetectedModsFromScan: (mods: DayzParsedMod[]) => void;
   applyImportedLocalModPaths: (mods: DayzParsedMod[], enabledPaths: string[]) => void;
+  hydrateModPresets: (presets: DayzServerModPreset[], selectedId?: string) => void;
   preferredModTokensRef: MutableRefObject<string[]>;
   serverMods: DayzParsedMod[];
+  modPresets: DayzServerModPreset[];
+  selectedModPresetId: string;
 };
 
 export function useDayzWorkspace({
@@ -42,8 +47,11 @@ export function useDayzWorkspace({
   scanWorkshopMods,
   setDetectedModsFromScan,
   applyImportedLocalModPaths,
+  hydrateModPresets,
   preferredModTokensRef,
   serverMods,
+  modPresets,
+  selectedModPresetId,
 }: UseDayzWorkspaceOptions) {
   const emptyPathValues = useMemo(
     () => Object.fromEntries(serverPaths.map(([label]) => [label, ""])) as Record<string, string>,
@@ -56,6 +64,8 @@ export function useDayzWorkspace({
   const [initGeneratorState, setInitGeneratorState] = useState<DayzInitGeneratorState>(
     cloneDayzInitGeneratorState,
   );
+  const [selectedInitLoadoutPresetId, setSelectedInitLoadoutPresetId] = useState("");
+  const [initPresetNameInput, setInitPresetNameInput] = useState("");
   const [missions, setMissions] = useState<DayzMission[]>([]);
   const [configModTokens, setConfigModTokens] = useState<string[]>([]);
   const [persistedEnabledModPaths, setPersistedEnabledModPaths] = useState<string[]>([]);
@@ -66,6 +76,12 @@ export function useDayzWorkspace({
   }>(defaultClientSettings);
   const [workspaceLoaded, setWorkspaceLoaded] = useState(!isDesktop || !dayzApi);
   const didBootstrapDayzRef = useRef(false);
+
+  const resolveServerModsPath = useCallback(
+    (currentPaths: Record<string, string>, fallbackRoot = "") =>
+      currentPaths[SERVER_MODS_LABEL] || currentPaths[DAYZ_SERVER_ROOT_LABEL] || fallbackRoot,
+    [],
+  );
 
   const loadServerConfig = useCallback(
     async (configPath: string) => {
@@ -131,12 +147,14 @@ export function useDayzWorkspace({
       }
 
       let resolvedMissionsPath = detected.mpmissions;
+      let resolvedServerModsPath = detected.serverMods || detected.serverRoot;
 
       setPathValues((current) => {
         const rootChanged = (current[DAYZ_SERVER_ROOT_LABEL] ?? "") !== detected.serverRoot;
         const nextValues = {
           ...current,
           [DAYZ_SERVER_ROOT_LABEL]: detected.serverRoot,
+          [SERVER_MODS_LABEL]: !rootChanged && current[SERVER_MODS_LABEL] ? current[SERVER_MODS_LABEL] : detected.serverMods,
           [PROFILES_LABEL]: !rootChanged && current[PROFILES_LABEL] ? current[PROFILES_LABEL] : detected.profiles,
           [KEYS_LABEL]: !rootChanged && current[KEYS_LABEL] ? current[KEYS_LABEL] : detected.keys,
           [BATTLEYE_LABEL]: !rootChanged && current[BATTLEYE_LABEL] ? current[BATTLEYE_LABEL] : detected.battleye,
@@ -144,6 +162,7 @@ export function useDayzWorkspace({
         };
 
         resolvedMissionsPath = nextValues[MPMISSIONS_LABEL];
+        resolvedServerModsPath = nextValues[SERVER_MODS_LABEL] || nextValues[DAYZ_SERVER_ROOT_LABEL];
         return nextValues;
       });
       setServerConfigPath(detected.configPath);
@@ -153,10 +172,11 @@ export function useDayzWorkspace({
       }
 
       await scanMissions(resolvedMissionsPath);
+      await scanServerMods(resolvedServerModsPath);
 
       return true;
     },
-    [loadServerConfig, scanMissions],
+    [loadServerConfig, scanMissions, scanServerMods],
   );
 
   const handleAutoScanServer = useCallback(async () => {
@@ -175,8 +195,9 @@ export function useDayzWorkspace({
         return;
       }
 
+      const serverModsRoot = resolveServerModsPath(pathValues, detected.serverMods || detected.serverRoot);
       const [scannedMods, workshopMods] = await Promise.all([
-        dayzApi.scanMods(detected.serverRoot),
+        dayzApi.scanMods(serverModsRoot),
         dayzApi.scanWorkshopMods(detected.serverRoot),
       ]);
 
@@ -198,7 +219,16 @@ export function useDayzWorkspace({
         "stderr",
       );
     }
-  }, [appendPreviewLog, applyDetectedPaths, clientPath, dayzApi, preferredModTokensRef, setDetectedModsFromScan]);
+  }, [
+    appendPreviewLog,
+    applyDetectedPaths,
+    clientPath,
+    dayzApi,
+    pathValues,
+    preferredModTokensRef,
+    resolveServerModsPath,
+    setDetectedModsFromScan,
+  ]);
 
   useEffect(() => {
     if (!isDesktop || !dayzApi) {
@@ -246,10 +276,28 @@ export function useDayzWorkspace({
         }
 
         if (state.initGeneratorState) {
-          setInitGeneratorState(mergeDayzInitGeneratorState(state.initGeneratorState));
+          const mergedState = mergeDayzInitGeneratorState(state.initGeneratorState);
+          setInitGeneratorState(mergedState);
+          const restoredPresetId =
+            typeof state.selectedInitLoadoutPresetId === "string" ? state.selectedInitLoadoutPresetId : "";
+          const fallbackPresetId = mergedState.loadoutPresets[0]?.id ?? "";
+          const resolvedPresetId =
+            restoredPresetId && mergedState.loadoutPresets.some((preset) => preset.id === restoredPresetId)
+              ? restoredPresetId
+              : fallbackPresetId;
+
+          setSelectedInitLoadoutPresetId(resolvedPresetId);
+
+          if (typeof state.initPresetNameInput === "string" && state.initPresetNameInput.trim()) {
+            setInitPresetNameInput(state.initPresetNameInput);
+          } else {
+            const matchedPreset = mergedState.loadoutPresets.find((preset) => preset.id === resolvedPresetId);
+            setInitPresetNameInput(matchedPreset?.name ?? "");
+          }
         }
 
         setPersistedEnabledModPaths(state.enabledModPaths ?? []);
+        hydrateModPresets(state.modPresets ?? [], state.selectedModPresetId);
 
         if (Array.isArray(state.importedLocalModPaths) && state.importedLocalModPaths.length > 0) {
           const importedResults = await Promise.allSettled(
@@ -276,7 +324,7 @@ export function useDayzWorkspace({
     return () => {
       mounted = false;
     };
-  }, [applyImportedLocalModPaths, dayzApi, isDesktop]);
+  }, [applyImportedLocalModPaths, dayzApi, hydrateModPresets, isDesktop]);
 
   useEffect(() => {
     if (!isDesktop || !dayzApi || !workspaceLoaded) {
@@ -289,11 +337,15 @@ export function useDayzWorkspace({
         clientPath,
         clientSettings,
         enabledModPaths: serverMods.filter((mod) => mod.enabled).map((mod) => mod.path),
+        modPresets,
+        selectedModPresetId,
         importedLocalModPaths: serverMods
           .filter((mod) => mod.source === "Local Import")
           .map((mod) => mod.path),
         serverConfigValues,
         initGeneratorState,
+        selectedInitLoadoutPresetId,
+        initPresetNameInput,
       });
     }, 250);
 
@@ -304,9 +356,13 @@ export function useDayzWorkspace({
     clientPath,
     clientSettings,
     dayzApi,
+    modPresets,
     initGeneratorState,
     isDesktop,
     pathValues,
+    initPresetNameInput,
+    selectedModPresetId,
+    selectedInitLoadoutPresetId,
     serverConfigValues,
     serverMods,
     workspaceLoaded,
@@ -325,7 +381,10 @@ export function useDayzWorkspace({
         .then(async (detected) => {
           const found = await applyDetectedPaths(detected);
           if (found) {
-            await Promise.all([scanServerMods(detected.serverRoot), scanWorkshopMods(detected.serverRoot)]);
+            await Promise.all([
+              scanServerMods(resolveServerModsPath(pathValues, detected.serverMods || detected.serverRoot)),
+              scanWorkshopMods(detected.serverRoot),
+            ]);
           }
         })
         .catch(() => undefined);
@@ -339,7 +398,17 @@ export function useDayzWorkspace({
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [applyDetectedPaths, dayzApi, handleAutoScanServer, isDesktop, pathValues, scanServerMods, scanWorkshopMods, workspaceLoaded]);
+  }, [
+    applyDetectedPaths,
+    dayzApi,
+    handleAutoScanServer,
+    isDesktop,
+    pathValues,
+    resolveServerModsPath,
+    scanServerMods,
+    scanWorkshopMods,
+    workspaceLoaded,
+  ]);
 
   const detectAndApplyServerPaths = useCallback(
     async (serverRoot: string) => {
@@ -359,7 +428,7 @@ export function useDayzWorkspace({
           return;
         }
 
-        await Promise.all([scanServerMods(detected.serverRoot), scanWorkshopMods(detected.serverRoot)]);
+        await Promise.all([scanServerMods(resolveServerModsPath(pathValues, detected.serverMods || detected.serverRoot)), scanWorkshopMods(detected.serverRoot)]);
 
         if (!clientPath) {
           const detectedClientPath = await dayzApi.detectClientExecutable().catch(() => null);
@@ -374,7 +443,7 @@ export function useDayzWorkspace({
         );
       }
     },
-    [appendPreviewLog, applyDetectedPaths, clientPath, dayzApi, scanServerMods, scanWorkshopMods],
+    [appendPreviewLog, applyDetectedPaths, clientPath, dayzApi, pathValues, resolveServerModsPath, scanServerMods, scanWorkshopMods],
   );
 
   const handleBrowsePath = useCallback(
@@ -398,6 +467,10 @@ export function useDayzWorkspace({
 
         setPathValues((current) => ({ ...current, [label]: pickedPath }));
 
+        if (label === SERVER_MODS_LABEL) {
+          await scanServerMods(pickedPath);
+        }
+
         if (label === MPMISSIONS_LABEL) {
           await scanMissions(pickedPath);
         }
@@ -408,7 +481,7 @@ export function useDayzWorkspace({
         );
       }
     },
-    [appendPreviewLog, dayzApi, detectAndApplyServerPaths, pathValues, scanMissions],
+    [appendPreviewLog, dayzApi, detectAndApplyServerPaths, pathValues, scanMissions, scanServerMods],
   );
 
   const handleBrowseClientPath = useCallback(async () => {
@@ -434,6 +507,10 @@ export function useDayzWorkspace({
     if (dayzApi) {
       if (pathValues[DAYZ_SERVER_ROOT_LABEL]) {
         await detectAndApplyServerPaths(pathValues[DAYZ_SERVER_ROOT_LABEL]);
+        await scanServerMods(resolveServerModsPath(pathValues));
+        await scanWorkshopMods(pathValues[DAYZ_SERVER_ROOT_LABEL]);
+      } else if (pathValues[SERVER_MODS_LABEL]) {
+        await scanServerMods(pathValues[SERVER_MODS_LABEL]);
       } else if (serverConfigPath) {
         await loadServerConfig(serverConfigPath);
       }
@@ -444,7 +521,18 @@ export function useDayzWorkspace({
         ? "[launcher] Path overrides updated for the current workspace."
         : "[launcher] Path overrides updated locally.",
     );
-  }, [appendPreviewLog, dayzApi, detectAndApplyServerPaths, isDesktop, loadServerConfig, pathValues, serverConfigPath]);
+  }, [
+    appendPreviewLog,
+    dayzApi,
+    detectAndApplyServerPaths,
+    isDesktop,
+    loadServerConfig,
+    pathValues,
+    resolveServerModsPath,
+    scanServerMods,
+    scanWorkshopMods,
+    serverConfigPath,
+  ]);
 
   const handleResetPaths = useCallback(async () => {
     const root = pathValues[DAYZ_SERVER_ROOT_LABEL] ?? "";
@@ -485,6 +573,10 @@ export function useDayzWorkspace({
     setServerConfigValues,
     initGeneratorState,
     setInitGeneratorState,
+    selectedInitLoadoutPresetId,
+    setSelectedInitLoadoutPresetId,
+    initPresetNameInput,
+    setInitPresetNameInput,
     configModTokens,
     persistedEnabledModPaths,
     clientPath,

@@ -29,6 +29,7 @@ export const defaultDayzInitGeneratorState: DayzInitGeneratorState = {
     nearObjectOffset: "2 0 2",
   },
   loadout: {
+    characterClass: "",
     body: "TShirt_Black",
     legs: "CargoPants_Black",
     feet: "AthleticShoes_Black",
@@ -71,6 +72,7 @@ export const defaultDayzInitGeneratorState: DayzInitGeneratorState = {
       id: "preset-light-debug",
       name: "Light Debug",
       loadout: {
+        characterClass: "",
         body: "TShirt_Black",
         legs: "CargoPants_Black",
         feet: "AthleticShoes_Black",
@@ -93,6 +95,7 @@ export const defaultDayzInitGeneratorState: DayzInitGeneratorState = {
       id: "preset-builder",
       name: "Builder",
       loadout: {
+        characterClass: "",
         body: "Hoodie_Black",
         legs: "CargoPants_Black",
         feet: "WorkingBoots_Black",
@@ -115,6 +118,7 @@ export const defaultDayzInitGeneratorState: DayzInitGeneratorState = {
       id: "preset-combat",
       name: "Combat Test",
       loadout: {
+        characterClass: "",
         body: "CombatJacket_Black",
         legs: "CombatPants_Black",
         feet: "MilitaryBoots_Black",

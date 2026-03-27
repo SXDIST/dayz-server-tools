@@ -1,6 +1,6 @@
-import { FileCog, Image, PackageSearch, ServerCog } from "lucide-react";
+import { FileCog, Image, PackageSearch, ServerCog, Siren } from "lucide-react";
 
-export type ModuleId = "dayz-server" | "image-to-paa" | "rvmat-editor" | "model-tools";
+export type ModuleId = "dayz-server" | "image-to-paa" | "crash-tools" | "rvmat-editor" | "model-tools";
 
 export const modules = [
   {
@@ -15,7 +15,14 @@ export const modules = [
     name: "Image To PAA",
     note: "Image conversion",
     icon: Image,
-    status: "Planned",
+    status: "Preview",
+  },
+  {
+    id: "crash-tools" as ModuleId,
+    name: "Crash Tools",
+    note: "Crash diagnostics",
+    icon: Siren,
+    status: "Ready",
   },
   {
     id: "rvmat-editor" as ModuleId,

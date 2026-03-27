@@ -12,6 +12,8 @@ const DAYZ_INIT_END_MARKER = "// <<< DAYZ TOOLS INIT GENERATOR END";
 
 let serverProcess = null;
 let serverRuntime = createRuntimeSnapshot();
+let clientProcess = null;
+let clientRuntime = createClientRuntimeSnapshot();
 let logSequence = 0;
 
 function createDefaultInitGeneratorState() {
@@ -46,6 +48,7 @@ function createDefaultInitGeneratorState() {
       nearObjectOffset: "2 0 2",
     },
     loadout: {
+      characterClass: "",
       body: "TShirt_Black",
       legs: "CargoPants_Black",
       feet: "AthleticShoes_Black",
@@ -88,6 +91,7 @@ function createDefaultInitGeneratorState() {
         id: "preset-light-debug",
         name: "Light Debug",
         loadout: {
+          characterClass: "",
           body: "TShirt_Black",
           legs: "CargoPants_Black",
           feet: "AthleticShoes_Black",
@@ -110,6 +114,7 @@ function createDefaultInitGeneratorState() {
         id: "preset-builder",
         name: "Builder",
         loadout: {
+          characterClass: "",
           body: "Hoodie_Black",
           legs: "CargoPants_Black",
           feet: "WorkingBoots_Black",
@@ -132,6 +137,7 @@ function createDefaultInitGeneratorState() {
         id: "preset-combat",
         name: "Combat Test",
         loadout: {
+          characterClass: "",
           body: "CombatJacket_Black",
           legs: "CombatPants_Black",
           feet: "MilitaryBoots_Black",
@@ -295,11 +301,15 @@ async function readWorkspaceState() {
         resolution: "1920x1080",
       },
       enabledModPaths: [],
-      importedLocalModPaths: [],
-      serverConfigValues: {},
-      initGeneratorState: createDefaultInitGeneratorState(),
-    };
-  }
+      modPresets: [],
+      selectedModPresetId: "",
+    importedLocalModPaths: [],
+    serverConfigValues: {},
+    initGeneratorState: createDefaultInitGeneratorState(),
+    selectedInitLoadoutPresetId: "",
+    initPresetNameInput: "",
+  };
+}
 }
 
 async function saveWorkspaceState(state) {
@@ -336,6 +346,7 @@ async function detectServerPaths(serverRoot) {
   if (!normalizedRoot) {
     return {
       serverRoot: "",
+      serverMods: "",
       profiles: "",
       keys: "",
       battleye: "",
@@ -353,6 +364,7 @@ async function detectServerPaths(serverRoot) {
 
   return {
     serverRoot: normalizedRoot,
+    serverMods: normalizedRoot,
     profiles: path.join(normalizedRoot, "profiles"),
     keys: path.join(normalizedRoot, "keys"),
     battleye: path.join(normalizedRoot, "battleye"),
@@ -751,6 +763,7 @@ function buildDateLines(state) {
 
 function buildCreateCharacterLines(state) {
   const spawn = state.spawn;
+  const forcedCharacterClass = String(state.loadout?.characterClass ?? "").trim();
   const fixedPosition = sanitizeVectorString(spawn.fixedPosition, "7500 0 7500");
   const nearObjectAnchor = sanitizeVectorString(spawn.nearObjectAnchor, fixedPosition);
   const nearObjectOffset = sanitizeVectorString(spawn.nearObjectOffset, "2 0 2");
@@ -785,8 +798,11 @@ function buildCreateCharacterLines(state) {
   }
 
   lines.push(
+    forcedCharacterClass
+      ? `\t\tstring selectedCharacter = "${escapeEnforceString(forcedCharacterClass)}";`
+      : "\t\tstring selectedCharacter = characterName;",
     "\t\tEntity playerEnt;",
-    '\t\tplayerEnt = GetGame().CreatePlayer(identity, characterName, spawnPosition, 0, "NONE");',
+    '\t\tplayerEnt = GetGame().CreatePlayer(identity, selectedCharacter, spawnPosition, 0, "NONE");',
     "\t\tClass.CastTo(m_player, playerEnt);",
     "\t\tGetGame().SelectPlayer(identity, m_player);",
     "\t\treturn m_player;",
@@ -1246,6 +1262,225 @@ async function readOptionalFile(filePath) {
   }
 }
 
+function classifyCrashArtifact(name) {
+  if (/\.rpt$/i.test(name)) {
+    return "rpt";
+  }
+
+  if (/^script_.*\.log$/i.test(name)) {
+    return "script";
+  }
+
+  if (/^crash_.*\.log$/i.test(name)) {
+    return "crash";
+  }
+
+  if (/\.mdmp$/i.test(name)) {
+    return "mdmp";
+  }
+
+  return null;
+}
+
+function buildCrashSnapshotSkeleton(profilesPath) {
+  return {
+    profilesPath: normalizePath(profilesPath),
+    artifacts: [],
+    latest: {
+      rpt: null,
+      script: null,
+      crash: null,
+      mdmp: null,
+    },
+    excerpts: {
+      rpt: [],
+      script: [],
+      crash: [],
+    },
+    analysis: {
+      severity: "info",
+      summary: "No crash artifacts found in the selected profiles folder.",
+      probableCause: "No crash data available yet.",
+      exceptionCode: "",
+      signals: [],
+      recommendations: [
+        "Launch the server once and reopen Crash Tools after a crash or script error occurs.",
+      ],
+    },
+  };
+}
+
+function buildCrashExcerpt(rawText, maxLines = 18) {
+  return String(rawText ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+    .slice(-maxLines);
+}
+
+function analyzeCrashArtifacts({ rptText, scriptText, crashText, hasDump }) {
+  const combined = [rptText, scriptText, crashText].filter(Boolean).join("\n");
+  const signals = [];
+  const recommendations = [];
+  let severity = "info";
+  let probableCause = "No crash signature matched yet.";
+
+  const exceptionCodeMatch = combined.match(/Exception code:\s*(0x[0-9a-f]+)/i);
+  const exceptionCode = exceptionCodeMatch?.[1]?.toLowerCase() ?? "";
+
+  if (/NULL pointer to instance/i.test(combined)) {
+    severity = "error";
+    probableCause = "Enforce Script null pointer during mission or mod execution.";
+    signals.push("Detected 'NULL pointer to instance' in script/crash logs.");
+    recommendations.push("Inspect the script stack around the first null pointer and identify the mod/class involved.");
+  }
+
+  if (/Can't compile|Compile error|SCRIPT ERROR/i.test(combined)) {
+    severity = "error";
+    probableCause = "Script compile or mission initialization error.";
+    signals.push("Detected script compile/runtime error markers.");
+    recommendations.push("Open the latest script log and fix the first compile/runtime error before relaunching.");
+  }
+
+  if (/Unhandled exception/i.test(combined)) {
+    severity = "error";
+    probableCause =
+      probableCause === "No crash signature matched yet."
+        ? "Unhandled native or script-linked server exception."
+        : probableCause;
+    signals.push("Detected 'Unhandled exception' in crash output.");
+  }
+
+  if (/0xc0000374/i.test(exceptionCode) || /heap corruption/i.test(combined)) {
+    severity = "error";
+    probableCause = "Heap corruption, usually caused by a mod/native interaction after a script failure.";
+    signals.push("Exception code 0xc0000374 / heap corruption signature detected.");
+    recommendations.push("Disable the most recently added mods and test again to isolate the crashing combination.");
+  }
+
+  if (/GetUpstreamIdentity/i.test(combined)) {
+    severity = "error";
+    probableCause = "A mod expects a real player identity on an entity that does not have one.";
+    signals.push("Identity-related call detected in the stack trace.");
+    recommendations.push("Check NPC/player spawning logic and mods that hook player identity or statistics.");
+  }
+
+  if (/stack trace/i.test(combined)) {
+    signals.push("Stack trace data is present in the logs.");
+  }
+
+  if (hasDump) {
+    signals.push("A memory dump (.mdmp) exists for this crash.");
+    if (severity === "info") {
+      severity = "warning";
+      probableCause = "A crash dump exists, but no strong text signature was detected in the text logs.";
+    }
+  }
+
+  if (recommendations.length === 0) {
+    recommendations.push("Open the latest RPT and script log to inspect the first error that appears before the crash.");
+    recommendations.push("Compare the crash time with the active mission, init.c changes and recently enabled mods.");
+  }
+
+  return {
+    severity,
+    summary:
+      severity === "info"
+        ? "No obvious crash signature was detected."
+        : `Detected ${signals.length} crash signal${signals.length === 1 ? "" : "s"} in the latest artifacts.`,
+    probableCause,
+    exceptionCode,
+    signals: [...new Set(signals)],
+    recommendations: [...new Set(recommendations)],
+  };
+}
+
+async function scanCrashTools(profilesPath) {
+  const normalizedProfilesPath = normalizePath(profilesPath);
+  const emptySnapshot = buildCrashSnapshotSkeleton(normalizedProfilesPath);
+
+  if (!normalizedProfilesPath || !(await pathExists(normalizedProfilesPath))) {
+    return {
+      ...emptySnapshot,
+      analysis: {
+        ...emptySnapshot.analysis,
+        severity: "warning",
+        summary: "Profiles folder is missing or was not selected.",
+        probableCause: "Crash Tools needs a valid DayZ Server profiles path.",
+        recommendations: [
+          "Set the correct Profiles path in DayZ Server Settings and refresh Crash Tools.",
+        ],
+      },
+    };
+  }
+
+  let entries = [];
+
+  try {
+    entries = await fsp.readdir(normalizedProfilesPath, { withFileTypes: true });
+  } catch {
+    return emptySnapshot;
+  }
+
+  const artifactEntries = await Promise.all(
+    entries
+      .filter((entry) => entry.isFile())
+      .map(async (entry) => {
+        const kind = classifyCrashArtifact(entry.name);
+
+        if (!kind) {
+          return null;
+        }
+
+        const filePath = path.join(normalizedProfilesPath, entry.name);
+        const stats = await fsp.stat(filePath);
+
+        return {
+          id: `${kind}-${entry.name.toLowerCase()}`,
+          kind,
+          name: entry.name,
+          path: filePath,
+          sizeBytes: stats.size,
+          modifiedAt: stats.mtime.toISOString(),
+        };
+      }),
+  );
+
+  const artifacts = artifactEntries
+    .filter(Boolean)
+    .sort((left, right) => new Date(right.modifiedAt).getTime() - new Date(left.modifiedAt).getTime());
+
+  const latest = {
+    rpt: artifacts.find((artifact) => artifact.kind === "rpt") ?? null,
+    script: artifacts.find((artifact) => artifact.kind === "script") ?? null,
+    crash: artifacts.find((artifact) => artifact.kind === "crash") ?? null,
+    mdmp: artifacts.find((artifact) => artifact.kind === "mdmp") ?? null,
+  };
+
+  const [latestRptRaw, latestScriptRaw, latestCrashRaw] = await Promise.all([
+    latest.rpt ? readOptionalFile(latest.rpt.path) : Promise.resolve(null),
+    latest.script ? readOptionalFile(latest.script.path) : Promise.resolve(null),
+    latest.crash ? readOptionalFile(latest.crash.path) : Promise.resolve(null),
+  ]);
+
+  return {
+    profilesPath: normalizedProfilesPath,
+    artifacts,
+    latest,
+    excerpts: {
+      rpt: buildCrashExcerpt(latestRptRaw),
+      script: buildCrashExcerpt(latestScriptRaw),
+      crash: buildCrashExcerpt(latestCrashRaw),
+    },
+    analysis: analyzeCrashArtifacts({
+      rptText: latestRptRaw,
+      scriptText: latestScriptRaw,
+      crashText: latestCrashRaw,
+      hasDump: Boolean(latest.mdmp),
+    }),
+  };
+}
+
 function parseWorkshopManifestItems(text) {
   const items = new Map();
   const lines = text.split(/\r?\n/);
@@ -1501,6 +1736,10 @@ async function scanDayzServerMods(serverRoot) {
     return [];
   }
 
+  if (await isLikelyModRoot(normalizedRoot)) {
+    return [await parseDayzMod(normalizedRoot, "Server Root")];
+  }
+
   let entries = [];
 
   try {
@@ -1509,9 +1748,19 @@ async function scanDayzServerMods(serverRoot) {
     return [];
   }
 
-  const modFolders = entries
-    .filter((entry) => entry.isDirectory() && entry.name.startsWith("@"))
-    .map((entry) => path.join(normalizedRoot, entry.name));
+  const modFolders = [];
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
+    const modRoot = path.join(normalizedRoot, entry.name);
+
+    if (entry.name.startsWith("@") || (await isLikelyModRoot(modRoot))) {
+      modFolders.push(modRoot);
+    }
+  }
 
   const mods = await Promise.all(modFolders.map((modRoot) => parseDayzMod(modRoot, "Server Root")));
   return mods.sort((left, right) => left.name.localeCompare(right.name, "en"));
@@ -1658,6 +1907,16 @@ function broadcast(channel, payload) {
   }
 }
 
+function createClientRuntimeSnapshot() {
+  return {
+    status: "stopped",
+    pid: null,
+    startedAt: null,
+    executablePath: null,
+    launchArgs: [],
+  };
+}
+
 function createLogEntry(line, level = "info") {
   logSequence += 1;
 
@@ -1696,6 +1955,16 @@ function setServerRuntime(patch) {
 
   broadcast("dayz:server-status", serverRuntime);
   return serverRuntime;
+}
+
+function setClientRuntime(patch) {
+  clientRuntime = {
+    ...clientRuntime,
+    ...patch,
+  };
+
+  broadcast("dayz:client-status", clientRuntime);
+  return clientRuntime;
 }
 
 function attachServerProcess(processHandle) {
@@ -1759,6 +2028,62 @@ async function killServerProcess() {
   return serverRuntime;
 }
 
+function attachClientProcess(processHandle, trackedExecutablePath, trackedArgs) {
+  processHandle.on("error", (error) => {
+    pushServerLog(`[client] Failed to start client: ${error.message}`, "stderr");
+    clientProcess = null;
+    setClientRuntime({
+      status: "stopped",
+      pid: null,
+      startedAt: null,
+      executablePath: trackedExecutablePath ?? null,
+      launchArgs: trackedArgs ?? [],
+    });
+  });
+
+  processHandle.on("exit", (code, signal) => {
+    pushServerLog(
+      `[client] DayZ client stopped${code !== null ? ` with code ${code}` : ""}${signal ? ` (${signal})` : ""}.`,
+      "info",
+    );
+
+    clientProcess = null;
+    setClientRuntime({
+      status: "stopped",
+      pid: null,
+      startedAt: null,
+    });
+  });
+}
+
+async function killClientProcess() {
+  if (!clientProcess || clientProcess.killed || clientProcess.exitCode !== null) {
+    clientProcess = null;
+    return setClientRuntime({
+      status: "stopped",
+      pid: null,
+      startedAt: null,
+      executablePath: null,
+      launchArgs: [],
+    });
+  }
+
+  const currentProcess = clientProcess;
+  pushServerLog("[client] Stopping DayZ client process...", "info");
+
+  await new Promise((resolve, reject) => {
+    const killer = spawn("taskkill", ["/pid", String(currentProcess.pid), "/t", "/f"], {
+      windowsHide: true,
+      stdio: "ignore",
+    });
+
+    killer.on("error", reject);
+    killer.on("exit", () => resolve());
+  });
+
+  return clientRuntime;
+}
+
 async function killProcessesByImageNames(imageNames = []) {
   for (const imageName of imageNames.filter(Boolean)) {
     await new Promise((resolve) => {
@@ -1820,6 +2145,17 @@ async function startServer(options = {}) {
 
   pushServerLog(`[launcher] Launching ${path.basename(executablePath)} from ${serverRoot}`, "info");
   pushServerLog(`[launcher] Launch arguments: ${args.join(" ")}`, "info");
+  pushServerLog(`[launcher] Working directory: ${serverRoot}`, "info");
+  pushServerLog(`[launcher] Config path: ${configPath || "not provided"}`, "info");
+  pushServerLog(`[launcher] Profiles path: ${profilesPath || "default"}`, "info");
+  pushServerLog(
+    `[launcher] BattlEye: ${enableBattleye ? `enabled (${battleyePath || "default"})` : "disabled"}`,
+    "info",
+  );
+  pushServerLog(
+    `[launcher] Mods (${mods.length}): ${mods.length > 0 ? mods.join(";") : "none"}`,
+    "info",
+  );
 
   setServerRuntime({
     status: "starting",
@@ -1853,6 +2189,13 @@ async function restartServer(options = {}) {
 }
 
 async function launchDayzClient(options = {}) {
+  if (clientProcess && clientProcess.exitCode === null) {
+    return {
+      executablePath: clientRuntime.executablePath || "",
+      args: clientRuntime.launchArgs,
+    };
+  }
+
   const executablePath = normalizePath(options.executablePath) || (await resolveClientExecutable());
 
   if (!executablePath) {
@@ -1892,6 +2235,26 @@ async function launchDayzClient(options = {}) {
     dayzArgs.push("-useBE");
   }
 
+  pushServerLog(`[client] Preparing DayZ client launch to ${serverAddress}:${serverPort}`, "info");
+  pushServerLog(`[client] Display mode: ${displayMode}`, "info");
+  pushServerLog(
+    `[client] Resolution: ${resolutionWidth > 0 && resolutionHeight > 0 ? `${resolutionWidth}x${resolutionHeight}` : "default"}`,
+    "info",
+  );
+  pushServerLog(
+    `[client] Mods (${mods.length}): ${mods.length > 0 ? mods.join(";") : "none"}`,
+    "info",
+  );
+  pushServerLog(`[client] BattlEye: ${enableBattleye ? "enabled" : "disabled"}`, "info");
+
+  setClientRuntime({
+    status: "launching",
+    pid: null,
+    startedAt: new Date().toISOString(),
+    executablePath: useBattleyeBootstrap ? battleyeExecutablePath : executablePath,
+    launchArgs: useBattleyeBootstrap ? ["-exe", path.basename(executablePath), ...dayzArgs] : dayzArgs,
+  });
+
   await writeDayzClientDisplayConfig({
     displayMode,
     resolutionWidth,
@@ -1908,10 +2271,11 @@ async function launchDayzClient(options = {}) {
 
   if (useBattleyeBootstrap) {
     const bootstrapArgs = ["-exe", path.basename(executablePath), ...dayzArgs];
+    pushServerLog(`[client] Bootstrap executable: ${battleyeExecutablePath}`, "info");
+    pushServerLog(`[client] Bootstrap arguments: ${bootstrapArgs.join(" ")}`, "info");
 
-    spawn(battleyeExecutablePath, bootstrapArgs, {
+    clientProcess = spawn(battleyeExecutablePath, bootstrapArgs, {
       cwd: executableDir,
-      detached: true,
       windowsHide: false,
       stdio: "ignore",
       env: {
@@ -1919,7 +2283,16 @@ async function launchDayzClient(options = {}) {
         SteamAppId: "221100",
         SteamGameId: "221100",
       },
-    }).unref();
+    });
+
+    attachClientProcess(clientProcess, battleyeExecutablePath, bootstrapArgs);
+    setClientRuntime({
+      status: "running",
+      pid: clientProcess.pid ?? null,
+      startedAt: new Date().toISOString(),
+      executablePath: battleyeExecutablePath,
+      launchArgs: bootstrapArgs,
+    });
 
     return {
       executablePath: battleyeExecutablePath,
@@ -1927,9 +2300,8 @@ async function launchDayzClient(options = {}) {
     };
   }
 
-  spawn(executablePath, dayzArgs, {
+  clientProcess = spawn(executablePath, dayzArgs, {
     cwd: executableDir,
-    detached: true,
     windowsHide: false,
     stdio: "ignore",
     env: {
@@ -1937,7 +2309,19 @@ async function launchDayzClient(options = {}) {
       SteamAppId: "221100",
       SteamGameId: "221100",
     },
-  }).unref();
+  });
+
+  pushServerLog(`[client] Direct executable: ${executablePath}`, "info");
+  pushServerLog(`[client] Direct arguments: ${dayzArgs.join(" ")}`, "info");
+
+  attachClientProcess(clientProcess, executablePath, dayzArgs);
+  setClientRuntime({
+    status: "running",
+    pid: clientProcess.pid ?? null,
+    startedAt: new Date().toISOString(),
+    executablePath,
+    launchArgs: dayzArgs,
+  });
 
   return {
     executablePath,
@@ -2014,8 +2398,8 @@ function createWindow() {
     minWidth: 1240,
     minHeight: 820,
     backgroundColor: "#07111f",
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 18, y: 16 },
+    frame: false,
+    titleBarStyle: "hidden",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -2038,8 +2422,39 @@ function createWindow() {
   });
 }
 
-ipcMain.handle("dayz:pick-folder", async (_event, options = {}) => {
-  const result = await dialog.showOpenDialog({
+function getWindowFromEvent(event) {
+  return BrowserWindow.fromWebContents(event.sender);
+}
+
+ipcMain.handle("app:minimize-window", async (event) => {
+  const targetWindow = getWindowFromEvent(event);
+  targetWindow?.minimize();
+});
+
+ipcMain.handle("app:toggle-maximize-window", async (event) => {
+  const targetWindow = getWindowFromEvent(event);
+
+  if (!targetWindow) {
+    return false;
+  }
+
+  if (targetWindow.isMaximized()) {
+    targetWindow.unmaximize();
+    return false;
+  }
+
+  targetWindow.maximize();
+  return true;
+});
+
+ipcMain.handle("app:close-window", async (event) => {
+  const targetWindow = getWindowFromEvent(event);
+  targetWindow?.close();
+});
+
+ipcMain.handle("dayz:pick-folder", async (event, options = {}) => {
+  const targetWindow = getWindowFromEvent(event);
+  const result = await dialog.showOpenDialog(targetWindow, {
     title: "Select Folder",
     properties: ["openDirectory"],
     defaultPath: normalizePath(options.defaultPath),
@@ -2052,8 +2467,9 @@ ipcMain.handle("dayz:pick-folder", async (_event, options = {}) => {
   return normalizePath(result.filePaths[0]);
 });
 
-ipcMain.handle("dayz:pick-executable", async (_event, options = {}) => {
-  const result = await dialog.showOpenDialog({
+ipcMain.handle("dayz:pick-executable", async (event, options = {}) => {
+  const targetWindow = getWindowFromEvent(event);
+  const result = await dialog.showOpenDialog(targetWindow, {
     title: "Select Executable",
     properties: ["openFile"],
     defaultPath: normalizePath(options.defaultPath),
@@ -2081,6 +2497,10 @@ ipcMain.handle("dayz:auto-detect-server-paths", async () => {
 
 ipcMain.handle("dayz:get-runtime", async () => {
   return serverRuntime;
+});
+
+ipcMain.handle("dayz:get-client-runtime", async () => {
+  return clientRuntime;
 });
 
 ipcMain.handle("dayz:start-server", async (_event, options) => {
@@ -2135,8 +2555,51 @@ ipcMain.handle("dayz:inspect-mod-folder", async (_event, modRoot) => {
   return inspectModFolder(modRoot);
 });
 
+ipcMain.handle("dayz:scan-crash-tools", async (_event, profilesPath) => {
+  return scanCrashTools(profilesPath);
+});
+
+ipcMain.handle("dayz:open-path", async (_event, targetPath) => {
+  const normalizedPath = normalizePath(targetPath);
+
+  if (!normalizedPath) {
+    throw new Error("Path is required.");
+  }
+
+  let stats = null;
+
+  try {
+    stats = await fsp.stat(normalizedPath);
+  } catch {
+    throw new Error(`Path was not found: ${normalizedPath}`);
+  }
+
+  if (stats.isDirectory()) {
+    const shellResult = await shell.openPath(normalizedPath);
+
+    if (!shellResult) {
+      return;
+    }
+
+    const child = spawn("explorer.exe", [normalizedPath], {
+      windowsHide: true,
+      detached: true,
+      stdio: "ignore",
+    });
+
+    child.unref();
+    return;
+  }
+
+  shell.showItemInFolder(normalizedPath);
+});
+
 ipcMain.handle("dayz:launch-client", async (_event, options) => {
   return launchDayzClient(options);
+});
+
+ipcMain.handle("dayz:stop-client", async () => {
+  return killClientProcess();
 });
 
 ipcMain.handle("dayz:get-workspace-state", async () => {

@@ -22,6 +22,7 @@ export const adminTools = [
 
 export const serverPaths = [
   ["DayZ Server Root", "D:\\Games\\DayZServer", "Required path"],
+  ["Server Mods", "D:\\Games\\DayZServer", "Folder that contains @mod directories"],
   ["Profiles", "D:\\Games\\DayZServer\\profiles", "Optional override"],
   ["Keys", "D:\\Games\\DayZServer\\keys", "Usually auto-detected"],
   ["BattlEye", "D:\\Games\\DayZServer\\battleye", "BattlEye working directory"],
@@ -42,6 +43,7 @@ export const fallbackTerminalLines = [
 ];
 
 export const DAYZ_SERVER_ROOT_LABEL = "DayZ Server Root";
+export const SERVER_MODS_LABEL = "Server Mods";
 export const PROFILES_LABEL = "Profiles";
 export const KEYS_LABEL = "Keys";
 export const BATTLEYE_LABEL = "BattlEye";
