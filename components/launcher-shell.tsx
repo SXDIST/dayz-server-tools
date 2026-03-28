@@ -134,7 +134,7 @@ export function LauncherShell() {
           activeView={activeView}
           onSelectView={handleSelectView}
         />
-        <section className="relative z-10 mt-[5.5rem] min-w-0 h-[calc(100vh-5.5rem)] overflow-y-auto">
+        <section className="app-soft-scroll app-scroll-fade relative z-10 mt-[5.5rem] min-w-0 h-[calc(100vh-5.5rem)] overflow-y-auto">
           <div className="px-4 pb-4 pt-3">
             {renderContent()}
           </div>

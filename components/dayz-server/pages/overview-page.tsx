@@ -7,6 +7,7 @@ import { Section } from "@/components/dayz-server/workspace-shared";
 import type { DayzServerWorkspaceProps } from "@/components/dayz-server/workspace-types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { VirtualList } from "@/components/ui/virtual-list";
 import { cn } from "@/lib/utils";
 
 type OverviewPageProps = Pick<
@@ -189,8 +190,15 @@ export function OverviewPage({
           </button>
 
           <div className="overflow-hidden" style={{ height: `${terminalHeight}px` }}>
-            <div ref={terminalRef} className="h-full overflow-auto bg-card/80 px-5 py-4 font-mono text-[13px] leading-7 text-foreground dark:bg-transparent dark:text-zinc-200">
-              {runtime.logs.map((entry, index) => {
+            <VirtualList
+              ref={terminalRef}
+              items={runtime.logs}
+              itemHeight={28}
+              paddingTop={16}
+              paddingBottom={16}
+              className="h-full bg-card/80 font-mono text-[13px] leading-7 text-foreground dark:bg-transparent dark:text-zinc-200"
+              emptyState={<div className="px-5 py-4 text-sm text-muted-foreground">No runtime logs yet.</div>}
+              renderItem={(entry, index) => {
                 const levelTone =
                   entry.level === "stderr"
                     ? "text-rose-600 dark:text-rose-300"
@@ -199,15 +207,15 @@ export function OverviewPage({
                       : "text-emerald-700 dark:text-emerald-300";
 
                 return (
-                  <div key={`${entry.id}-${index}`} className="whitespace-pre-wrap">
+                  <div className="px-5 whitespace-pre">
                     <span className="text-muted-foreground dark:text-zinc-500">{`[${formatLogTime(entry.timestamp)}]`}</span>{" "}
                     <span className={levelTone}>{`[${entry.level.toUpperCase()}]`}</span>{" "}
                     <span className="text-emerald-600 dark:text-emerald-400">{`[${index + 1}]`}</span>{" "}
                     <span>{entry.line}</span>
                   </div>
                 );
-              })}
-            </div>
+              }}
+            />
           </div>
         </div>
       </div>

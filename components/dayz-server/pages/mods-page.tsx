@@ -11,6 +11,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { VirtualVariableList } from "@/components/ui/virtual-variable-list";
 import { cn } from "@/lib/utils";
 
 type ModsPageProps = Pick<
@@ -78,23 +79,25 @@ const ModListItem = memo(function ModListItem({
   mod,
   toggleLabel,
   modId,
+  expanded,
+  onExpandedChange,
   onToggleEnabled,
   onOpenModDirectory,
 }: {
   mod: DayzParsedMod;
   toggleLabel: string;
   modId: string;
+  expanded: boolean;
+  onExpandedChange: (modId: string, expanded: boolean) => void;
   onToggleEnabled: (modId: string) => void;
   onOpenModDirectory: (modPath: string) => Promise<void>;
 }) {
-  const [expandedValue, setExpandedValue] = useState("");
-
   return (
     <Accordion
       type="single"
       collapsible
-      value={expandedValue}
-      onValueChange={setExpandedValue}
+      value={expanded ? mod.id : ""}
+      onValueChange={(value) => onExpandedChange(mod.id, value === mod.id)}
       className="rounded-xl border border-border/60 bg-background/30 px-4"
     >
       <AccordionItem value={mod.id} className="border-b-0">
@@ -195,6 +198,54 @@ const ModListItem = memo(function ModListItem({
   );
 });
 
+function VirtualizedModList({
+  mods,
+  emptyMessage,
+  toggleLabel,
+  heightClassName,
+  expandedModIds,
+  onExpandedChange,
+  onToggleModEnabled,
+  onOpenModDirectory,
+}: {
+  mods: DayzParsedMod[];
+  emptyMessage: string;
+  toggleLabel: string;
+  heightClassName: string;
+  expandedModIds: Set<string>;
+  onExpandedChange: (modId: string, expanded: boolean) => void;
+  onToggleModEnabled: (modId: string) => void;
+  onOpenModDirectory: (modPath: string) => Promise<void>;
+}) {
+  return (
+    <VirtualVariableList
+      items={mods}
+      estimatedItemHeight={72}
+      gap={12}
+      paddingTop={16}
+      paddingBottom={16}
+      className={cn(heightClassName, "px-4")}
+      emptyState={
+        <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
+          {emptyMessage}
+        </div>
+      }
+      getItemKey={(mod) => mod.id}
+      renderItem={(mod) => (
+        <ModListItem
+          mod={mod}
+          toggleLabel={toggleLabel}
+          modId={mod.id}
+          expanded={expandedModIds.has(mod.id)}
+          onExpandedChange={onExpandedChange}
+          onToggleEnabled={onToggleModEnabled}
+          onOpenModDirectory={onOpenModDirectory}
+        />
+      )}
+    />
+  );
+}
+
 const ModsPageContent = memo(function ModsPageContent({
   modsSearch,
   setModsSearch,
@@ -217,6 +268,33 @@ const ModsPageContent = memo(function ModsPageContent({
   const deferredWorkshopMods = useDeferredValue(availableWorkshopMods);
   const deferredLocalMods = useDeferredValue(availableLocalMods);
   const deferredEnabledMods = useDeferredValue(enabledMods);
+  const [expandedWorkshopModIds, setExpandedWorkshopModIds] = useState<Set<string>>(() => new Set());
+  const [expandedLocalModIds, setExpandedLocalModIds] = useState<Set<string>>(() => new Set());
+  const [expandedEnabledModIds, setExpandedEnabledModIds] = useState<Set<string>>(() => new Set());
+  const visibleExpandedWorkshopModIds = new Set(
+    [...expandedWorkshopModIds].filter((id) => deferredWorkshopMods.some((mod) => mod.id === id)),
+  );
+  const visibleExpandedLocalModIds = new Set(
+    [...expandedLocalModIds].filter((id) => deferredLocalMods.some((mod) => mod.id === id)),
+  );
+  const visibleExpandedEnabledModIds = new Set(
+    [...expandedEnabledModIds].filter((id) => deferredEnabledMods.some((mod) => mod.id === id)),
+  );
+
+  const updateExpandedSet =
+    (setExpanded: React.Dispatch<React.SetStateAction<Set<string>>>) => (modId: string, expanded: boolean) => {
+      setExpanded((current) => {
+        const next = new Set(current);
+
+        if (expanded) {
+          next.add(modId);
+        } else {
+          next.delete(modId);
+        }
+
+        return next;
+      });
+    };
 
   return (
     <Section title="Mods" description="Search, inspect and manage the launch preset for local and Workshop mods.">
@@ -246,23 +324,16 @@ const ModsPageContent = memo(function ModsPageContent({
                 <p className="text-sm font-semibold text-foreground">Workshop Mods</p>
                 <p className="mt-1 text-sm text-muted-foreground">Detected automatically from Steam Workshop for DayZ.</p>
               </div>
-              <div className="space-y-3 px-4 py-4">
-                {deferredWorkshopMods.map((mod) => (
-                  <ModListItem
-                    key={mod.id}
-                    mod={mod}
-                    toggleLabel="Enable"
-                    modId={mod.id}
-                    onToggleEnabled={onToggleModEnabled}
-                    onOpenModDirectory={onOpenModDirectory}
-                  />
-                ))}
-                {deferredWorkshopMods.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
-                    No Workshop mods match the current filter.
-                  </div>
-                ) : null}
-              </div>
+              <VirtualizedModList
+                mods={deferredWorkshopMods}
+                emptyMessage="No Workshop mods match the current filter."
+                toggleLabel="Enable"
+                heightClassName="h-[38rem]"
+                expandedModIds={visibleExpandedWorkshopModIds}
+                onExpandedChange={updateExpandedSet(setExpandedWorkshopModIds)}
+                onToggleModEnabled={onToggleModEnabled}
+                onOpenModDirectory={onOpenModDirectory}
+              />
             </div>
 
             <div className="rounded-2xl border border-border/70 bg-muted/15">
@@ -270,23 +341,16 @@ const ModsPageContent = memo(function ModsPageContent({
                 <p className="text-sm font-semibold text-foreground">Local Mods</p>
                 <p className="mt-1 text-sm text-muted-foreground">Server-root mods and manually imported local folders.</p>
               </div>
-              <div className="space-y-3 px-4 py-4">
-                {deferredLocalMods.map((mod) => (
-                  <ModListItem
-                    key={mod.id}
-                    mod={mod}
-                    toggleLabel="Enable"
-                    modId={mod.id}
-                    onToggleEnabled={onToggleModEnabled}
-                    onOpenModDirectory={onOpenModDirectory}
-                  />
-                ))}
-                {deferredLocalMods.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
-                    No local mods match the current filter.
-                  </div>
-                ) : null}
-              </div>
+              <VirtualizedModList
+                mods={deferredLocalMods}
+                emptyMessage="No local mods match the current filter."
+                toggleLabel="Enable"
+                heightClassName="h-[22rem]"
+                expandedModIds={visibleExpandedLocalModIds}
+                onExpandedChange={updateExpandedSet(setExpandedLocalModIds)}
+                onToggleModEnabled={onToggleModEnabled}
+                onOpenModDirectory={onOpenModDirectory}
+              />
             </div>
           </div>
 
@@ -347,23 +411,16 @@ const ModsPageContent = memo(function ModsPageContent({
                 <p className="text-sm font-semibold text-foreground">Enabled Mods</p>
                 <p className="mt-1 text-sm text-muted-foreground">Active preset selection used for launch arguments.</p>
               </div>
-              <div className="space-y-2 px-4 py-3">
-                {deferredEnabledMods.map((mod) => (
-                  <ModListItem
-                    key={`${mod.id}-enabled`}
-                    mod={mod}
-                    toggleLabel="Disable"
-                    modId={mod.id}
-                    onToggleEnabled={onToggleModEnabled}
-                    onOpenModDirectory={onOpenModDirectory}
-                  />
-                ))}
-                {deferredEnabledMods.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border/60 px-3 py-6 text-center text-sm text-muted-foreground">
-                    No enabled mods match the current filter.
-                  </div>
-                ) : null}
-              </div>
+              <VirtualizedModList
+                mods={deferredEnabledMods}
+                emptyMessage="No enabled mods match the current filter."
+                toggleLabel="Disable"
+                heightClassName="h-[32rem]"
+                expandedModIds={visibleExpandedEnabledModIds}
+                onExpandedChange={updateExpandedSet(setExpandedEnabledModIds)}
+                onToggleModEnabled={onToggleModEnabled}
+                onOpenModDirectory={onOpenModDirectory}
+              />
             </div>
           </div>
         </div>

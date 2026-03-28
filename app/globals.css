@@ -126,6 +126,28 @@ html[data-theme-switching="true"] *::after {
   transition: none !important;
 }
 
+.app-soft-scroll {
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable;
+}
+
+.app-scroll-fade {
+  --scroll-fade-top: 18px;
+  --scroll-fade-bottom: 28px;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black var(--scroll-fade-top),
+    black calc(100% - var(--scroll-fade-bottom)),
+    transparent 100%
+  );
+}
+
+.app-scroll-fade-tight {
+  --scroll-fade-top: 10px;
+  --scroll-fade-bottom: 16px;
+}
+
 [data-reduce-motion="true"] *,
 [data-reduce-motion="true"] *::before,
 [data-reduce-motion="true"] *::after {
@@ -133,6 +155,11 @@ html[data-theme-switching="true"] *::after {
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
+}
+
+[data-reduce-motion="true"] .app-scroll-fade,
+[data-reduce-motion="true"] .app-scroll-fade-tight {
+  mask-image: none !important;
 }
 
 @keyframes panel-fade {

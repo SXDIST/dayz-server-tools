@@ -7,6 +7,7 @@ import { PROFILES_LABEL } from "@/components/dayz-server/constants";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { VirtualList } from "@/components/ui/virtual-list";
 import { cn } from "@/lib/utils";
 
 function formatBytes(sizeBytes: number) {
@@ -84,9 +85,14 @@ function ExcerptCard({
       </CardHeader>
       <CardContent className="p-4">
         {lines.length > 0 ? (
-          <pre className="code-surface max-h-[28rem] min-h-[20rem] overflow-auto rounded-xl border border-border/60 p-4 font-mono text-xs leading-6 select-text">
-            {lines.join("\n")}
-          </pre>
+          <VirtualList
+            items={lines}
+            itemHeight={24}
+            paddingTop={16}
+            paddingBottom={16}
+            className="code-surface max-h-[28rem] min-h-[20rem] rounded-xl border border-border/60 font-mono text-xs leading-6 select-text"
+            renderItem={(line) => <div className="px-4 whitespace-pre">{line}</div>}
+          />
         ) : (
           <div className="rounded-xl border border-dashed border-border/60 px-4 py-8 text-sm text-muted-foreground">
             No lines captured for this artifact yet.
