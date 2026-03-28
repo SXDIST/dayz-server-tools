@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   defaultLauncherPreferences,
@@ -38,33 +38,9 @@ export function useLauncherPreferences() {
 
     return window.__DAYZ_LAUNCHER_BOOTSTRAP__?.lastView || "dayz-server";
   });
-  const [loaded, setLoaded] = useState(false);
+  const [loaded] = useState(typeof window !== "undefined");
   const hasHydratedRef = useRef(false);
   const fontSignatureRef = useRef("");
-
-  useEffect(() => {
-    const frameId = window.requestAnimationFrame(() => {
-      try {
-        const rawPreferences = window.localStorage.getItem(launcherPreferencesStorageKey);
-        const rawLastView = window.localStorage.getItem(launcherLastViewStorageKey);
-
-        if (rawPreferences) {
-          setPreferences(normalizeLauncherPreferences(JSON.parse(rawPreferences)));
-        }
-
-        if (rawLastView) {
-          setLastView(rawLastView);
-        }
-      } catch {
-        setPreferences(defaultLauncherPreferences);
-        setLastView("dayz-server");
-      } finally {
-        setLoaded(true);
-      }
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, []);
 
   useEffect(() => {
     if (!loaded) {
@@ -177,16 +153,11 @@ export function useLauncherPreferences() {
     };
   }, [preferences]);
 
-  const api = useMemo(
-    () => ({
-      preferences,
-      setPreferences,
-      loaded,
-      lastView,
-      setLastView,
-    }),
-    [lastView, loaded, preferences],
-  );
-
-  return api;
+  return {
+    preferences,
+    setPreferences,
+    loaded,
+    lastView,
+    setLastView,
+  };
 }

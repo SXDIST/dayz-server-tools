@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, session, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, Menu, session, shell } = require("electron");
 const { spawn } = require("child_process");
 const fsp = require("fs/promises");
 const path = require("path");
@@ -15,6 +15,16 @@ let serverRuntime = createRuntimeSnapshot();
 let clientProcess = null;
 let clientRuntime = createClientRuntimeSnapshot();
 let logSequence = 0;
+let hasConfiguredHeaders = false;
+
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval'${isDev ? " http://localhost:3000" : ""}`,
+  "style-src 'self' 'unsafe-inline'",
+  `img-src 'self' data: blob:${isDev ? " http://localhost:3000" : ""}`,
+  "font-src 'self' data:",
+  `connect-src 'self'${isDev ? " ws://localhost:3000 http://localhost:3000" : ""}`,
+].join("; ");
 
 function createDefaultInitGeneratorState() {
   return {
@@ -2381,22 +2391,12 @@ async function writeServerConfig(options = {}) {
 }
 
 function createWindow() {
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        "Content-Security-Policy": [
-          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:3000; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: http://localhost:3000; font-src 'self' data:; connect-src 'self' ws://localhost:3000 http://localhost:3000 https://fonts.gstatic.com https://fonts.googleapis.com;",
-        ],
-      },
-    });
-  });
-
   const mainWindow = new BrowserWindow({
     width: 1600,
     height: 1020,
     minWidth: 1240,
     minHeight: 820,
+    show: false,
     backgroundColor: "#07111f",
     frame: false,
     titleBarStyle: "hidden",
@@ -2405,6 +2405,10 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+
+  mainWindow.once("ready-to-show", () => {
+    mainWindow.show();
   });
 
   if (isDev) {
@@ -2420,6 +2424,23 @@ function createWindow() {
     shell.openExternal(url);
     return { action: "deny" };
   });
+}
+
+function configureElectronShell() {
+  if (!hasConfiguredHeaders) {
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          "Content-Security-Policy": [CONTENT_SECURITY_POLICY],
+        },
+      });
+    });
+
+    hasConfiguredHeaders = true;
+  }
+
+  Menu.setApplicationMenu(null);
 }
 
 function getWindowFromEvent(event) {
@@ -2611,6 +2632,7 @@ ipcMain.handle("dayz:save-workspace-state", async (_event, state) => {
 });
 
 app.whenReady().then(() => {
+  configureElectronShell();
   createWindow();
 
   app.on("activate", () => {

@@ -1,18 +1,10 @@
 "use client";
 
-import { Boxes, FileCog, Image, Minus, PackageSearch, ServerCog, Siren, Square, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Boxes, ChevronDown, FileCog, Image, Minus, PackageSearch, ServerCog, Siren, Square, X } from "lucide-react";
 
 import { modules, type ModuleId } from "@/components/launcher/constants";
 import { Badge } from "@/components/ui/badge";
-import {
-  NavigationMenu,
-  NavigationMenuContent,
-  NavigationMenuItem,
-  NavigationMenuLink,
-  NavigationMenuList,
-  NavigationMenuTrigger,
-  navigationMenuTriggerStyle,
-} from "@/components/ui/navigation-menu";
 import { cn } from "@/lib/utils";
 
 type HeaderView = ModuleId | "settings";
@@ -35,11 +27,18 @@ function HeaderModuleButton({
   onClick: () => void;
 }) {
   return (
-    <NavigationMenuLink asChild>
-      <button type="button" className={cn(navigationMenuTriggerStyle(active), "app-no-drag")} onClick={onClick}>
-        {label}
-      </button>
-    </NavigationMenuLink>
+    <button
+      type="button"
+      className={cn(
+        "app-no-drag inline-flex h-10 items-center justify-center rounded-xl px-4 py-2 text-sm font-medium transition-colors",
+        active
+          ? "bg-accent text-accent-foreground"
+          : "text-foreground/82 hover:bg-accent/70 hover:text-foreground",
+      )}
+      onClick={onClick}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -78,6 +77,34 @@ export function AppHeader({
   onSelectView: (view: HeaderView) => void;
 }) {
   const dropdownModules = modules.filter((module) => module.id !== "dayz-server" && module.id !== "image-to-paa");
+  const [isToolsOpen, setIsToolsOpen] = useState(false);
+  const toolsMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isToolsOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!toolsMenuRef.current?.contains(event.target as Node)) {
+        setIsToolsOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsToolsOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isToolsOpen]);
 
   const handleMinimize = () => {
     void window.desktopBridge?.app.minimizeWindow();
@@ -90,6 +117,8 @@ export function AppHeader({
   const handleClose = () => {
     void window.desktopBridge?.app.closeWindow();
   };
+
+  const toolsActive = dropdownModules.some((module) => module.id === activeView);
 
   return (
     <header className="app-drag-region fixed inset-x-0 top-0 z-50 border-b border-border/70 bg-card/92 backdrop-blur-xl">
@@ -106,66 +135,78 @@ export function AppHeader({
           </div>
 
           <div className="min-w-0 flex flex-1 justify-center">
-            <NavigationMenu className="w-full max-w-[760px] justify-center">
-              <NavigationMenuList className="justify-center gap-1 rounded-2xl px-1.5 py-1">
-                <NavigationMenuItem>
-                  <HeaderModuleButton
-                    active={activeView === "dayz-server"}
-                    label="DayZ Server"
-                    onClick={() => onSelectView("dayz-server")}
-                  />
-                </NavigationMenuItem>
-                <NavigationMenuItem>
-                  <HeaderModuleButton
-                    active={activeView === "image-to-paa"}
-                    label="Image To PAA"
-                    onClick={() => onSelectView("image-to-paa")}
-                  />
-                </NavigationMenuItem>
-                <NavigationMenuItem>
-                  <NavigationMenuTrigger className="app-no-drag px-4">Tools</NavigationMenuTrigger>
-                  <NavigationMenuContent className="app-no-drag">
-                    <div className="grid min-w-[460px] gap-2 p-2.5">
-                      {dropdownModules.map((module) => {
-                        const Icon = moduleIconMap[module.id];
+            <div className="relative flex w-full max-w-[760px] justify-center" ref={toolsMenuRef}>
+              <div className="flex items-center justify-center gap-1 rounded-2xl border border-border/70 bg-card/85 p-1">
+                <HeaderModuleButton
+                  active={activeView === "dayz-server"}
+                  label="DayZ Server"
+                  onClick={() => onSelectView("dayz-server")}
+                />
+                <HeaderModuleButton
+                  active={activeView === "image-to-paa"}
+                  label="Image To PAA"
+                  onClick={() => onSelectView("image-to-paa")}
+                />
+                <button
+                  type="button"
+                  className={cn(
+                    "app-no-drag inline-flex h-10 items-center justify-center rounded-xl px-4 py-2 text-sm font-medium transition-colors",
+                    toolsActive || isToolsOpen
+                      ? "bg-accent text-accent-foreground"
+                      : "text-foreground/82 hover:bg-accent/70 hover:text-foreground",
+                  )}
+                  onClick={() => setIsToolsOpen((current) => !current)}
+                  aria-expanded={isToolsOpen}
+                  aria-haspopup="menu"
+                >
+                  Tools
+                  <ChevronDown className={cn("ml-1 size-3 transition-transform", isToolsOpen && "rotate-180")} />
+                </button>
+                <HeaderModuleButton
+                  active={activeView === "settings"}
+                  label="Settings"
+                  onClick={() => onSelectView("settings")}
+                />
+              </div>
 
-                        return (
-                          <button
-                            key={module.id}
-                            type="button"
-                            onClick={() => onSelectView(module.id)}
-                            className={cn(
-                              "rounded-xl border border-border/60 bg-card/70 p-3 text-left transition-colors hover:bg-accent/60",
-                              activeView === module.id && "bg-accent",
-                            )}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="flex size-9 items-center justify-center rounded-lg border border-border/60 bg-muted/35">
-                                <Icon className="size-4" />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <p className="text-sm font-medium text-foreground">{module.name}</p>
-                                  <Badge variant="secondary">{module.status}</Badge>
-                                </div>
-                                <p className="mt-0.5 text-xs text-muted-foreground">{module.note}</p>
-                              </div>
+              {isToolsOpen ? (
+                <div className="app-no-drag absolute top-full left-1/2 z-50 mt-2.5 w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 rounded-2xl border border-border/70 bg-popover/95 p-2.5 shadow-lg backdrop-blur-xl">
+                  <div className="grid gap-2">
+                    {dropdownModules.map((module) => {
+                      const Icon = moduleIconMap[module.id];
+
+                      return (
+                        <button
+                          key={module.id}
+                          type="button"
+                          onClick={() => {
+                            onSelectView(module.id);
+                            setIsToolsOpen(false);
+                          }}
+                          className={cn(
+                            "rounded-xl border border-border/60 bg-card/70 p-3 text-left transition-colors hover:bg-accent/60",
+                            activeView === module.id && "bg-accent",
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="flex size-9 items-center justify-center rounded-lg border border-border/60 bg-muted/35">
+                              <Icon className="size-4" />
                             </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </NavigationMenuContent>
-                </NavigationMenuItem>
-                <NavigationMenuItem>
-                  <HeaderModuleButton
-                    active={activeView === "settings"}
-                    label="Settings"
-                    onClick={() => onSelectView("settings")}
-                  />
-                </NavigationMenuItem>
-              </NavigationMenuList>
-            </NavigationMenu>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-medium text-foreground">{module.name}</p>
+                                <Badge variant="secondary">{module.status}</Badge>
+                              </div>
+                              <p className="mt-0.5 text-xs text-muted-foreground">{module.note}</p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
 
           <div className="mr-1 flex items-center gap-1.5">
