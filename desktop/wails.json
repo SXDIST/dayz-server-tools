@@ -1,0 +1,23 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "DayZ Tools Launcher",
+  "outputfilename": "dayz-tools",
+  "assetdir": "./frontend-dist",
+  "frontend:dir": "..",
+  "wailsjsdir": "..",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build:wails-assets",
+  "frontend:dev:watcher": "npm run dev:web",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Arima Kurosawwa",
+    "email": "nightmoon.yt228@gmail.com"
+  },
+  "info": {
+    "companyName": "DayZ Tools",
+    "productName": "DayZ Tools Launcher",
+    "productVersion": "0.1.0",
+    "comments": "Desktop build powered by Wails",
+    "copyright": "Copyright Arima Kurosawwa"
+  }
+}

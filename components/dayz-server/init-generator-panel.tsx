@@ -9,12 +9,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
+const DEFAULT_CHARACTER_CLASS = "SurvivorM_Boris";
+
 const CHARACTER_OPTIONS = [
   {
     groupLabel: "Men",
     options: [
-      { value: "", label: "Mission Default / Random" },
-      { value: "SurvivorM_Boris", label: "Boris" },
+      { value: DEFAULT_CHARACTER_CLASS, label: "Boris" },
       { value: "SurvivorM_Cyril", label: "Cyril" },
       { value: "SurvivorM_Elias", label: "Elias" },
       { value: "SurvivorM_Francis", label: "Francis" },
@@ -504,11 +505,6 @@ export function InitGeneratorPanel({
                 <span className="rounded-lg border border-border/60 bg-background/40 px-2.5 py-1 text-xs text-muted-foreground">
                   {previewResult.hasExistingInit ? "Existing init.c" : "New init.c"}
                 </span>
-                {previewResult.usesManagedBlock ? (
-                  <span className="rounded-lg border border-border/60 bg-background/40 px-2.5 py-1 text-xs text-muted-foreground">
-                    Managed Update
-                  </span>
-                ) : null}
               </>
             ) : (
               <span className="rounded-lg border border-border/60 bg-background/40 px-2.5 py-1 text-xs text-muted-foreground">

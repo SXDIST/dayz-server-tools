@@ -37,7 +37,7 @@ export function MissionsPage(props: MissionsPageProps) {
   return (
     <Section title="Missions" description="Detected mission folders from mpmissions with quick selection for Server.cfg and init.c generation.">
       <div className="space-y-4">
-        <div className="rounded-2xl border border-border/60 bg-muted/15 p-3">
+        <div className="rounded-xl border bg-muted/30 p-3">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
             <div>
               <p className="text-sm font-semibold text-foreground">Mission Folders</p>
@@ -62,8 +62,8 @@ export function MissionsPage(props: MissionsPageProps) {
                   key={mission.id}
                   className={`w-[520px] shrink-0 rounded-2xl border p-5 transition-colors ${
                     isActive
-                      ? "border-primary/35 bg-primary/8"
-                      : "border-border/60 bg-background/40 hover:bg-background/55"
+                      ? "border-border bg-accent text-accent-foreground"
+                      : "border-border/60 bg-background hover:bg-muted/30"
                   }`}
                 >
                   <div className="flex h-full flex-col justify-between gap-6">
@@ -86,7 +86,7 @@ export function MissionsPage(props: MissionsPageProps) {
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
-                      <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                      <div className="text-xs text-muted-foreground">
                         {isActive ? "In Use" : "Available"}
                       </div>
                       <Button

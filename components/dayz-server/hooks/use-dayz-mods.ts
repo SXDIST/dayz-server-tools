@@ -14,6 +14,7 @@ function createFallbackMods(): DayzParsedMod[] {
     source: mod.source,
     state: mod.state,
     enabled: mod.enabled,
+    launchMode: "mod",
     path: mod.name,
     hasAddonsDir: true,
     hasKeysDir: false,
@@ -61,7 +62,7 @@ export function useDayzMods({ dayzApi, appendPreviewLog, preferredModTokensRef }
       }
 
       if (!dayzApi) {
-        appendPreviewLog("[mods] Live mod scanning works in the Electron desktop build.");
+        appendPreviewLog("[mods] Live mod scanning works in the desktop build.");
         return;
       }
 
@@ -98,7 +99,7 @@ export function useDayzMods({ dayzApi, appendPreviewLog, preferredModTokensRef }
       }
 
       if (!dayzApi) {
-        appendPreviewLog("[mods] Workshop scanning works in the Electron desktop build.");
+        appendPreviewLog("[mods] Workshop scanning works in the desktop build.");
         return;
       }
 
@@ -132,7 +133,7 @@ export function useDayzMods({ dayzApi, appendPreviewLog, preferredModTokensRef }
 
   const importLocalMod = useCallback(async () => {
     if (!dayzApi) {
-      appendPreviewLog("[mods] Local mod import works in the Electron desktop build.");
+      appendPreviewLog("[mods] Local mod import works in the desktop build.");
       return;
     }
 

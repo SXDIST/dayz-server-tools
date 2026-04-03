@@ -6,8 +6,14 @@ import { FileImage, FolderOpen, Layers3, MousePointer2, Sparkles, WandSparkles }
 import { SelectField, ToggleField } from "@/components/dayz-server/form-controls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  WorkspaceField,
+  WorkspaceInfoRow,
+  WorkspacePage,
+  WorkspacePageHeader,
+  WorkspacePanel,
+} from "@/components/workspace/workspace-kit";
 
 const imageToPaaPresets = [
   {
@@ -43,74 +49,6 @@ const imageToPaaPresets = [
     alphaMode: "Ignore",
   },
 ] as const;
-
-function Section({
-  title,
-  description,
-  icon,
-  children,
-}: {
-  title: string;
-  description?: string;
-  icon?: React.ComponentType<{ className?: string }>;
-  children: React.ReactNode;
-}) {
-  const Icon = icon;
-
-  return (
-    <Card className="rounded-2xl border border-border/70 bg-card/95 shadow-none">
-      <CardHeader className="border-b border-border/60">
-        <div className="flex items-start gap-3">
-          {Icon ? (
-            <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/25">
-              <Icon className="size-4 text-muted-foreground" />
-            </div>
-          ) : null}
-          <div className="min-w-0">
-            <CardTitle className="text-base">{title}</CardTitle>
-            {description ? <CardDescription className="mt-1">{description}</CardDescription> : null}
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">{children}</CardContent>
-    </Card>
-  );
-}
-
-function Field({
-  label,
-  note,
-  control,
-}: {
-  label: string;
-  note: string;
-  control: React.ReactNode;
-}) {
-  return (
-    <div className="grid gap-3 border-b border-border/60 py-4 first:pt-0 last:border-b-0 last:pb-0 xl:grid-cols-[180px_minmax(0,1fr)]">
-      <div>
-        <p className="text-sm font-medium text-foreground">{label}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{note}</p>
-      </div>
-      <div>{control}</div>
-    </div>
-  );
-}
-
-function MetaCard({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-xl border border-border/60 bg-background/30 p-3">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <p className="mt-2 text-sm text-foreground">{value}</p>
-    </div>
-  );
-}
 
 export function ImageToPaaPage() {
   const [sourceMode, setSourceMode] = useState<"single" | "folder">("single");
@@ -180,24 +118,25 @@ export function ImageToPaaPage() {
     textureItems.find((item) => item.id === selectedTextureId) ?? textureItems[0] ?? null;
 
   return (
-    <div className="space-y-4">
-      <Card className="rounded-2xl border border-border/70 bg-card/95 shadow-none">
-        <CardHeader className="border-b border-border/60">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <CardTitle className="text-xl">Image To PAA</CardTitle>
-              <CardDescription className="mt-1 max-w-2xl">
-                Compact desktop workspace for preparing source textures, conversion profiles and batch queues.
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary">Workspace Ready</Badge>
-              <Badge variant="outline">Backend Next</Badge>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-3">
-          <Button className="gap-2">
+    <WorkspacePage>
+      <WorkspacePageHeader
+        eyebrow="Texture Pipeline"
+        title="Image To PAA"
+        description="A tighter production-style conversion workspace: queue source textures, lock a preset, review the current target and run the exact action you need without hunting through placeholder panels."
+        actions={
+          <>
+            <Badge variant="secondary">Workspace Ready</Badge>
+            <Badge variant="outline">Backend Next</Badge>
+          </>
+        }
+      />
+
+      <WorkspacePanel
+        title="Conversion Actions"
+        description="Build the queue, run the selected item or expand the source set."
+        contentClassName="flex flex-wrap gap-3"
+      >
+        <Button className="gap-2">
             <Layers3 className="size-4" />
             Build Queue
           </Button>
@@ -209,18 +148,17 @@ export function ImageToPaaPage() {
             <FolderOpen className="size-4" />
             Add Folder
           </Button>
-        </CardContent>
-      </Card>
+      </WorkspacePanel>
 
-      <Section
+      <WorkspacePanel
         title="Texture List"
         description="Files that will be staged for conversion from folder scan or drag & drop."
         icon={FileImage}
       >
-        <div className="rounded-xl border border-dashed border-border/60 bg-muted/10 p-4">
+        <div className="rounded-lg border border-dashed bg-muted/20 p-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/25">
+              <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted">
                 <MousePointer2 className="size-4 text-muted-foreground" />
               </div>
               <div>
@@ -241,9 +179,9 @@ export function ImageToPaaPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
-          <div className="overflow-hidden rounded-xl border border-border/60">
-            <div className="grid grid-cols-[220px_90px_minmax(0,1fr)_90px] border-b border-border/60 bg-muted/20 px-4 py-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+        <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="overflow-hidden rounded-lg border">
+            <div className="grid grid-cols-[220px_90px_minmax(0,1fr)_90px] border-b bg-muted/30 px-4 py-3 text-xs font-medium text-muted-foreground">
               <span>Name</span>
               <span>Type</span>
               <span>Path</span>
@@ -258,7 +196,7 @@ export function ImageToPaaPage() {
                   className={`grid w-full grid-cols-[220px_90px_minmax(0,1fr)_90px] items-center border-b border-border/50 px-4 py-3 text-left text-sm transition-colors last:border-b-0 ${
                     selectedTextureId === item.id
                       ? "bg-accent text-accent-foreground"
-                      : "bg-background/30 text-foreground hover:bg-muted/20"
+                      : "bg-background text-foreground hover:bg-muted/20"
                   }`}
                 >
                   <span className="truncate font-medium">{item.name}</span>
@@ -271,68 +209,71 @@ export function ImageToPaaPage() {
           </div>
 
           {selectedTexture ? (
-            <div className="rounded-xl border border-border/60 bg-muted/15 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Selected Texture</p>
+            <div className="rounded-lg border bg-muted/20 p-4">
+              <p className="text-xs font-medium text-muted-foreground">Selected Texture</p>
               <p className="mt-2 text-sm font-medium text-foreground">{selectedTexture.name}</p>
               <p className="mt-1 break-all text-sm text-muted-foreground">{selectedTexture.path}</p>
               <div className="mt-4 grid gap-3">
-                <MetaCard label="Target" value={selectedTexture.target} />
-                <MetaCard label="Preset" value={selectedPreset.label} />
-                <MetaCard label="Format" value={format} />
-                <MetaCard label="Alpha" value={alphaMode} />
-                <MetaCard label="Details" value={`${selectedTexture.type} | ${selectedTexture.size}`} />
+                <WorkspaceInfoRow label="Target" value={selectedTexture.target} />
+                <WorkspaceInfoRow label="Preset" value={selectedPreset.label} />
+                <WorkspaceInfoRow label="Format" value={format} />
+                <WorkspaceInfoRow label="Alpha" value={alphaMode} />
+                <WorkspaceInfoRow label="Details" value={`${selectedTexture.type} | ${selectedTexture.size}`} />
               </div>
             </div>
           ) : null}
         </div>
-      </Section>
+      </WorkspacePanel>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <Section
+        <WorkspacePanel
           title="Pipeline"
           description="Source scope, paths and external conversion toolchain."
           icon={FolderOpen}
         >
-          <Field
+          <WorkspaceField
             label="Source Mode"
-            note="Single image conversion or folder-based queue generation."
+            description="Single image conversion or folder-based queue generation."
             control={
               <SelectField
-                value={sourceMode === "single" ? "Single Image" : "Folder Batch"}
-                options={["Single Image", "Folder Batch"]}
-                onValueChange={(value) => setSourceMode(value === "Folder Batch" ? "folder" : "single")}
+                value={sourceMode}
+                options={[
+                  { value: "single", label: "Single Image" },
+                  { value: "folder", label: "Folder Batch" },
+                ]}
+                onValueChange={(value) => setSourceMode(value === "folder" ? "folder" : "single")}
               />
             }
           />
-          <Field
+          <WorkspaceField
             label="Source Path"
-            note={
+            description={
               sourceMode === "single"
                 ? "Input image file for direct conversion."
                 : "Folder that will be scanned into a queue."
             }
             control={<Input value={sourcePath} onChange={(event) => setSourcePath(event.target.value)} />}
           />
-          <Field
+          <WorkspaceField
             label="Output Folder"
-            note="Destination for converted PAA files."
+            description="Destination for converted PAA files."
             control={<Input value={outputPath} onChange={(event) => setOutputPath(event.target.value)} />}
           />
-          <Field
+          <WorkspaceField
             label="TexView Path"
-            note="Planned backend integration target for real PAA conversion."
+            description="Planned backend integration target for real PAA conversion."
             control={<Input value={texViewPath} onChange={(event) => setTexViewPath(event.target.value)} />}
           />
-        </Section>
+        </WorkspacePanel>
 
-        <Section
+        <WorkspacePanel
           title="Conversion"
           description="Preset, format and preprocessing behavior."
           icon={WandSparkles}
         >
-          <Field
+          <WorkspaceField
             label="Preset"
-            note="High-level DayZ-oriented preset for common texture workflows."
+            description="High-level DayZ-oriented preset for common texture workflows."
             control={
               <SelectField
                 value={presetId}
@@ -351,9 +292,9 @@ export function ImageToPaaPage() {
               />
             }
           />
-          <Field
+          <WorkspaceField
             label="PAA Format"
-            note="Compression/container mode for the exported texture."
+            description="Compression/container mode for the exported texture."
             control={
               <SelectField
                 value={format}
@@ -362,9 +303,9 @@ export function ImageToPaaPage() {
               />
             }
           />
-          <Field
+          <WorkspaceField
             label="Alpha"
-            note="How alpha should be treated during conversion."
+            description="How alpha should be treated during conversion."
             control={
               <SelectField
                 value={alphaMode}
@@ -373,9 +314,9 @@ export function ImageToPaaPage() {
               />
             }
           />
-          <Field
+          <WorkspaceField
             label="Resize"
-            note="Optional resizing strategy before export."
+            description="Optional resizing strategy before export."
             control={
               <SelectField
                 value={resizeMode}
@@ -384,9 +325,9 @@ export function ImageToPaaPage() {
               />
             }
           />
-          <Field
+          <WorkspaceField
             label="Mipmaps"
-            note="Recommended for in-world textures, usually disabled for clean UI icons."
+            description="Recommended for in-world textures, usually disabled for clean UI icons."
             control={
               <ToggleField
                 checked={generateMipmaps}
@@ -395,9 +336,9 @@ export function ImageToPaaPage() {
               />
             }
           />
-          <Field
+          <WorkspaceField
             label="Premultiply"
-            note="Useful for some icon pipelines and alpha-heavy source material."
+            description="Useful for some icon pipelines and alpha-heavy source material."
             control={
               <ToggleField
                 checked={premultiplyAlpha}
@@ -406,9 +347,9 @@ export function ImageToPaaPage() {
               />
             }
           />
-          <Field
+          <WorkspaceField
             label="Flip Vertical"
-            note="Optional preprocessing step if source textures arrive inverted."
+            description="Optional preprocessing step if source textures arrive inverted."
             control={
               <ToggleField
                 checked={flipVertical}
@@ -417,8 +358,8 @@ export function ImageToPaaPage() {
               />
             }
           />
-        </Section>
+        </WorkspacePanel>
       </div>
-    </div>
+    </WorkspacePage>
   );
 }

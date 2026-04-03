@@ -69,8 +69,8 @@ export function DayzServerPage() {
 
   const preferredModTokens = useMemo(() => {
     const runtimeTokens = runtime.serverRuntime.launchArgs
-      .filter((argument) => argument.startsWith("-mod="))
-      .flatMap((argument) => argument.slice(5).split(";"))
+      .filter((argument) => argument.startsWith("-mod=") || argument.startsWith("-serverMod="))
+      .flatMap((argument) => argument.slice(argument.indexOf("=") + 1).split(";"))
       .filter(Boolean);
     const selectedModPaths = mods.serverMods.filter((mod) => mod.enabled).map((mod) => mod.path);
 
@@ -120,7 +120,7 @@ export function DayzServerPage() {
     }
 
     if (!dayzApi) {
-      runtime.appendPreviewLog("[launcher] Live server launch works in the Electron desktop build.");
+      runtime.appendPreviewLog("[launcher] Live server launch works in the desktop build.");
       runtime.setServerRuntime((current) => ({ ...current, status: "running" }));
       return;
     }
@@ -146,7 +146,7 @@ export function DayzServerPage() {
 
   const handleStopServer = useCallback(async () => {
     if (!dayzApi) {
-      runtime.appendPreviewLog("[launcher] Live server stop works in the Electron desktop build.");
+      runtime.appendPreviewLog("[launcher] Live server stop works in the desktop build.");
       runtime.setServerRuntime((current) => ({ ...current, status: "stopped" }));
       return;
     }
@@ -178,7 +178,7 @@ export function DayzServerPage() {
     }
 
     if (!dayzApi) {
-      runtime.appendPreviewLog("[launcher] Live server restart works in the Electron desktop build.");
+      runtime.appendPreviewLog("[launcher] Live server restart works in the desktop build.");
       runtime.setServerRuntime((current) => ({ ...current, status: "starting" }));
       return;
     }
@@ -204,7 +204,7 @@ export function DayzServerPage() {
 
   const handleLaunchClient = useCallback(async () => {
     if (!dayzApi) {
-      runtime.appendPreviewLog("[launcher] Client launch works in the Electron desktop build.");
+      runtime.appendPreviewLog("[launcher] Client launch works in the desktop build.");
       return;
     }
 
@@ -228,7 +228,9 @@ export function DayzServerPage() {
       const result = await dayzApi.launchClient({
         serverAddress: "127.0.0.1",
         serverPort: 2302,
-        mods: mods.serverMods.filter((mod) => mod.enabled).map((mod) => mod.path),
+        mods: mods.serverMods
+          .filter((mod) => mod.enabled && mod.launchMode !== "serverMod")
+          .map((mod) => mod.path),
         executablePath: workspace.clientPath || undefined,
         enableBattleye: workspace.serverConfigValues.battlEye,
         displayMode: workspace.clientSettings.displayMode,
@@ -248,7 +250,7 @@ export function DayzServerPage() {
 
   const handleStopClient = useCallback(async () => {
     if (!dayzApi) {
-      runtime.appendPreviewLog("[client] Client stop works in the Electron desktop build.");
+      runtime.appendPreviewLog("[client] Client stop works in the desktop build.");
       runtime.setClientRuntime({
         status: "stopped",
         pid: null,

@@ -8,7 +8,10 @@ import { MissionsPage } from "@/components/dayz-server/pages/missions-page";
 import { OverviewPage } from "@/components/dayz-server/pages/overview-page";
 import { ServerSettingsPage } from "@/components/dayz-server/pages/settings-page";
 import { TabButton } from "@/components/dayz-server/workspace-shared";
+import { Badge } from "@/components/ui/badge";
 import type { DayzServerWorkspaceProps } from "@/components/dayz-server/workspace-types";
+import { WorkspacePageHeader } from "@/components/workspace/workspace-kit";
+import { cn } from "@/lib/utils";
 
 export function DayzServerWorkspace(props: DayzServerWorkspaceProps) {
   const renderContent = () => {
@@ -108,8 +111,20 @@ export function DayzServerWorkspace(props: DayzServerWorkspaceProps) {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2 rounded-2xl border border-border/70 bg-card/70 p-2">
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <WorkspacePageHeader
+        eyebrow="Server Workspace"
+        title="DayZ Server"
+        description="Run the server, curate mods, edit config and generate mission init data from one focused workspace."
+        actions={
+          <>
+            <Badge variant="secondary">{props.runtime.status}</Badge>
+            <Badge variant="outline">{props.enabledMods.length} enabled mods</Badge>
+          </>
+        }
+      />
+      <div className="rounded-xl border bg-card p-2">
+        <div className="flex flex-wrap gap-2">
         {serverTabs.map((tab) => (
           <TabButton
             key={tab.id}
@@ -118,8 +133,16 @@ export function DayzServerWorkspace(props: DayzServerWorkspaceProps) {
             onClick={() => props.setServerTab(tab.id)}
           />
         ))}
+        </div>
       </div>
-      {renderContent()}
+      <div
+        className={cn(
+          "min-h-0 flex-1",
+          props.serverTab === "overview" ? "overflow-hidden" : "",
+        )}
+      >
+        {renderContent()}
+      </div>
     </div>
   );
 }

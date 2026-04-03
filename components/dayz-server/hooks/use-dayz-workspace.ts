@@ -90,7 +90,7 @@ export function useDayzWorkspace({
       }
 
       if (!dayzApi) {
-        appendPreviewLog("[launcher] Live config loading works in the Electron desktop build.");
+        appendPreviewLog("[launcher] Live config loading works in the desktop build.");
         return;
       }
 
@@ -120,7 +120,7 @@ export function useDayzWorkspace({
       }
 
       if (!dayzApi) {
-        appendPreviewLog("[missions] Live mission scanning works in the Electron desktop build.");
+        appendPreviewLog("[missions] Live mission scanning works in the desktop build.");
         return;
       }
 
@@ -181,7 +181,7 @@ export function useDayzWorkspace({
 
   const handleAutoScanServer = useCallback(async () => {
     if (!dayzApi) {
-      appendPreviewLog("[launcher] Auto scan is available in the Electron desktop build.");
+      appendPreviewLog("[launcher] Auto scan is available in the desktop build.");
       return;
     }
 
@@ -449,7 +449,7 @@ export function useDayzWorkspace({
   const handleBrowsePath = useCallback(
     async (label: string) => {
       if (!dayzApi) {
-        appendPreviewLog("[launcher] Folder picker is available in Electron only.");
+        appendPreviewLog("[launcher] Folder picker is available in the desktop build only.");
         return;
       }
 
@@ -486,7 +486,7 @@ export function useDayzWorkspace({
 
   const handleBrowseClientPath = useCallback(async () => {
     if (!dayzApi) {
-      appendPreviewLog("[launcher] Executable picker is available in Electron only.");
+      appendPreviewLog("[launcher] Executable picker is available in the desktop build only.");
       return;
     }
 
@@ -560,7 +560,8 @@ export function useDayzWorkspace({
       battleyePath: pathValues[BATTLEYE_LABEL] ?? "",
       enableBattleye: serverConfigValues.battlEye,
       configPath: serverConfigPath || undefined,
-      mods: serverMods.filter((mod) => mod.enabled).map((mod) => mod.path),
+      mods: serverMods.filter((mod) => mod.enabled && mod.launchMode !== "serverMod").map((mod) => mod.path),
+      serverModPaths: serverMods.filter((mod) => mod.enabled && mod.launchMode === "serverMod").map((mod) => mod.path),
     };
   }, [pathValues, serverConfigPath, serverConfigValues.battlEye, serverMods]);
 

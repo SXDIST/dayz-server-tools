@@ -4,16 +4,12 @@ import dynamic from "next/dynamic";
 import { useState } from "react";
 
 import { AppHeader } from "@/components/launcher/app-header";
+import { AppSidebar } from "@/components/launcher/app-sidebar";
 import type { ModuleId } from "@/components/launcher/constants";
 import { PlaceholderModule } from "@/components/launcher/placeholder-module";
 import { launcherLastViewStorageKey } from "@/components/launcher/preferences";
 import { useLauncherPreferences } from "@/components/launcher/use-launcher-preferences";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-
-const BackgroundStars = dynamic(
-  () => import("@/components/background-stars").then((module) => module.BackgroundStars),
-  { ssr: false },
-);
 
 function ModuleLoadingCard({
   title,
@@ -127,18 +123,24 @@ export function LauncherShell() {
   };
 
   return (
-    <main className="relative h-screen overflow-hidden bg-background text-foreground">
-      {preferences.backgroundEffects ? <BackgroundStars /> : null}
-      <div className="flex h-full flex-col overflow-hidden">
+    <main className="launcher-shell relative h-screen overflow-hidden bg-background text-foreground">
+      <div className="launcher-shell__frame relative z-10 flex h-full flex-col overflow-hidden">
         <AppHeader
           activeView={activeView}
           onSelectView={handleSelectView}
         />
-        <section className="app-soft-scroll app-scroll-fade relative z-10 mt-[5.5rem] min-w-0 h-[calc(100vh-5.5rem)] overflow-y-auto">
-          <div className="px-4 pb-4 pt-3">
-            {renderContent()}
+        <div className="launcher-shell__body mt-[5.5rem] min-h-0 flex-1 overflow-hidden px-3 pb-3">
+          <div className="grid h-full min-h-0 gap-3 xl:grid-cols-[280px_minmax(0,1fr)]">
+            <AppSidebar
+              activeView={activeView}
+              onSelectModule={handleSelectView}
+              compactSidebar={preferences.compactSidebar}
+            />
+            <section className="launcher-shell__content app-soft-scroll app-scroll-fade min-h-0 overflow-y-auto rounded-xl border bg-background p-3 sm:p-4">
+              {renderContent()}
+            </section>
           </div>
-        </section>
+        </div>
       </div>
     </main>
   );

@@ -1,3 +1,5 @@
+export const DEFAULT_CHARACTER_CLASS = "SurvivorM_Boris";
+
 export const defaultDayzInitGeneratorState: DayzInitGeneratorState = {
   weather: {
     mode: "fixed",
@@ -29,7 +31,7 @@ export const defaultDayzInitGeneratorState: DayzInitGeneratorState = {
     nearObjectOffset: "2 0 2",
   },
   loadout: {
-    characterClass: "",
+    characterClass: DEFAULT_CHARACTER_CLASS,
     body: "TShirt_Black",
     legs: "CargoPants_Black",
     feet: "AthleticShoes_Black",
@@ -72,7 +74,7 @@ export const defaultDayzInitGeneratorState: DayzInitGeneratorState = {
       id: "preset-light-debug",
       name: "Light Debug",
       loadout: {
-        characterClass: "",
+        characterClass: DEFAULT_CHARACTER_CLASS,
         body: "TShirt_Black",
         legs: "CargoPants_Black",
         feet: "AthleticShoes_Black",
@@ -95,7 +97,7 @@ export const defaultDayzInitGeneratorState: DayzInitGeneratorState = {
       id: "preset-builder",
       name: "Builder",
       loadout: {
-        characterClass: "",
+        characterClass: DEFAULT_CHARACTER_CLASS,
         body: "Hoodie_Black",
         legs: "CargoPants_Black",
         feet: "WorkingBoots_Black",
@@ -118,7 +120,7 @@ export const defaultDayzInitGeneratorState: DayzInitGeneratorState = {
       id: "preset-combat",
       name: "Combat Test",
       loadout: {
-        characterClass: "",
+        characterClass: DEFAULT_CHARACTER_CLASS,
         body: "CombatJacket_Black",
         legs: "CombatPants_Black",
         feet: "MilitaryBoots_Black",
@@ -157,19 +159,29 @@ export function mergeDayzInitGeneratorState(
     return base;
   }
 
+  const mergedLoadout = { ...base.loadout, ...(input.loadout ?? {}) };
+
+  if (!String(mergedLoadout.characterClass ?? "").trim()) {
+    mergedLoadout.characterClass = DEFAULT_CHARACTER_CLASS;
+  }
+
   return {
     ...base,
     ...input,
     weather: { ...base.weather, ...(input.weather ?? {}) },
     spawn: { ...base.spawn, ...(input.spawn ?? {}) },
-    loadout: { ...base.loadout, ...(input.loadout ?? {}) },
+    loadout: mergedLoadout,
     helpers: { ...base.helpers, ...(input.helpers ?? {}) },
     session: { ...base.session, ...(input.session ?? {}) },
     modHooks: { ...base.modHooks, ...(input.modHooks ?? {}) },
     loadoutPresets: Array.isArray(input.loadoutPresets) && input.loadoutPresets.length > 0
       ? input.loadoutPresets.map((preset) => ({
           ...preset,
-          loadout: { ...base.loadout, ...preset.loadout },
+          loadout: {
+            ...base.loadout,
+            ...preset.loadout,
+            characterClass: String(preset.loadout?.characterClass ?? "").trim() || DEFAULT_CHARACTER_CLASS,
+          },
         }))
       : base.loadoutPresets,
   };

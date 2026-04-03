@@ -47,6 +47,7 @@ declare global {
     enableBattleye?: boolean;
     configPath?: string;
     mods?: string[];
+    serverModPaths?: string[];
   }
 
   interface DayzClientLaunchOptions {
@@ -224,6 +225,7 @@ declare global {
     source: string;
     state: string;
     enabled: boolean;
+    launchMode: "mod" | "serverMod";
     path: string;
     hasAddonsDir: boolean;
     hasKeysDir: boolean;
@@ -339,6 +341,15 @@ declare global {
 
     interface Window {
       desktopBridge?: DesktopBridge;
+      go?: {
+        main?: {
+          App?: Record<string, (...args: unknown[]) => Promise<unknown>>;
+        };
+      };
+      runtime?: {
+        EventsOn?: (eventName: string, callback: (...args: unknown[]) => void) => void;
+        EventsOff?: (eventName: string) => void;
+      };
       __DAYZ_LAUNCHER_BOOTSTRAP__?: {
         preferences?: {
           themeMode?: "system" | "light" | "dark";

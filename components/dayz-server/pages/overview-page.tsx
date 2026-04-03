@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Gamepad2, GripHorizontal, Pause, Play, RotateCcw } from "lucide-react";
+import { Gamepad2, GripHorizontal, Pause, Play, RotateCcw, TerminalSquare } from "lucide-react";
 
 import { Section } from "@/components/dayz-server/workspace-shared";
 import type { DayzServerWorkspaceProps } from "@/components/dayz-server/workspace-types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { VirtualList } from "@/components/ui/virtual-list";
+import { WorkspaceMetricTile } from "@/components/workspace/workspace-kit";
 import { cn } from "@/lib/utils";
 
 type OverviewPageProps = Pick<
@@ -46,7 +47,7 @@ export function OverviewPage({
   onLaunchClient,
   onStopClient,
 }: OverviewPageProps) {
-  const [terminalHeight, setTerminalHeight] = useState(280);
+  const [terminalHeight, setTerminalHeight] = useState(360);
   const [isDragging, setIsDragging] = useState(false);
   const terminalRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -82,27 +83,37 @@ export function OverviewPage({
 
   useEffect(() => {
     const element = terminalRef.current;
-    if (element) {
-      element.scrollTop = element.scrollHeight;
+
+    if (!element) {
+      return;
     }
-  }, [runtime.logs]);
+
+    const frame = window.requestAnimationFrame(() => {
+      element.scrollTop = element.scrollHeight;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [runtime.logs, terminalHeight]);
 
   const statusTone =
     runtime.status === "running"
-      ? "bg-emerald-500/12 text-emerald-300 border-emerald-500/20"
+      ? "bg-primary text-primary-foreground border-primary"
       : runtime.status === "starting"
-        ? "bg-amber-500/12 text-amber-300 border-amber-500/20"
+        ? "bg-secondary text-secondary-foreground border-border"
         : "bg-muted text-muted-foreground border-border";
   const isServerRunning = runtime.status === "running" || runtime.status === "starting";
   const isClientRunning = clientRuntime.status === "running" || clientRuntime.status === "launching";
 
   return (
-    <div className="flex min-h-[calc(100vh-8.5rem)] flex-col gap-4">
-      <Section title="Server Control" description="Start, stop and monitor the current DayZ Server workspace.">
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
+      <div className="shrink-0">
+        <Section title="Server Control" description="Start, stop and monitor the current DayZ Server workspace.">
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-3">
             <Button
-              variant={isServerRunning ? "destructive" : "success"}
+              variant={isServerRunning ? "destructive" : "default"}
               className="gap-2"
               onClick={() => void (isServerRunning ? onStop() : onStart())}
               disabled={isServerPending}
@@ -115,7 +126,7 @@ export function OverviewPage({
               Restart
             </Button>
             <Button
-              variant={isClientRunning ? "destructive" : "info"}
+              variant={isClientRunning ? "destructive" : "secondary"}
               className="gap-2"
               onClick={() => void (isClientRunning ? onStopClient() : onLaunchClient())}
               disabled={isClientPending}
@@ -130,7 +141,7 @@ export function OverviewPage({
               className={cn(
                 "rounded-full border px-3 py-1 text-xs",
                 isClientRunning
-                  ? "border-cyan-500/20 bg-cyan-500/10 text-cyan-200"
+                  ? "border-border bg-secondary text-secondary-foreground"
                   : "border-border bg-muted text-muted-foreground",
               )}
             >
@@ -142,41 +153,26 @@ export function OverviewPage({
             </Badge>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-            <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Executable</p>
-              <p className="mt-2 break-all text-sm text-foreground">{runtime.executablePath || "Not started yet"}</p>
-            </div>
-            <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">PID</p>
-              <p className="mt-2 text-sm text-foreground">{runtime.pid ?? "N/A"}</p>
-            </div>
-            <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Started</p>
-              <p className="mt-2 text-sm text-foreground">
-                {runtime.startedAt ? formatLogTime(runtime.startedAt) : "Not running"}
-              </p>
-            </div>
-            <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Launch Args</p>
-              <p className="mt-2 text-sm text-foreground">{runtime.launchArgs.length}</p>
-            </div>
-            <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Client PID</p>
-              <p className="mt-2 text-sm text-foreground">{clientRuntime.pid ?? "N/A"}</p>
-            </div>
-            <div className="rounded-xl border border-border/60 bg-muted/15 p-3">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Client Started</p>
-              <p className="mt-2 text-sm text-foreground">
-                {clientRuntime.startedAt ? formatLogTime(clientRuntime.startedAt) : "Not running"}
-              </p>
-            </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+            <WorkspaceMetricTile label="Executable" value={<span className="break-all text-sm">{runtime.executablePath || "Not started yet"}</span>} />
+            <WorkspaceMetricTile label="PID" value={runtime.pid ?? "N/A"} />
+            <WorkspaceMetricTile label="Started" value={runtime.startedAt ? formatLogTime(runtime.startedAt) : "Not running"} />
+            <WorkspaceMetricTile label="Launch Args" value={runtime.launchArgs.length} />
+            <WorkspaceMetricTile label="Client PID" value={clientRuntime.pid ?? "N/A"} />
+            <WorkspaceMetricTile label="Client Started" value={clientRuntime.startedAt ? formatLogTime(clientRuntime.startedAt) : "Not running"} />
           </div>
         </div>
-      </Section>
+        </Section>
+      </div>
 
-      <div className="pointer-events-none mt-auto -mx-5 -mb-5">
-        <div className="pointer-events-auto overflow-hidden rounded-t-[26px] border-x border-t border-border/70 bg-card/95 shadow-[0_-24px_60px_rgba(0,0,0,0.12)] dark:bg-[#111315]/96 dark:shadow-[0_-24px_60px_rgba(0,0,0,0.35)]">
+      <div className="pointer-events-none min-h-0 flex-1 overflow-hidden">
+        <div className="flex h-full min-h-0 flex-col justify-end">
+        <div className="pointer-events-none mt-2">
+        <div
+          className="pointer-events-auto flex overflow-hidden rounded-xl border bg-card text-card-foreground shadow-none"
+          style={{ height: `${terminalHeight}px` }}
+        >
+          <div className="flex min-h-0 flex-1 flex-col">
           <button
             type="button"
             aria-label="Resize terminal"
@@ -184,39 +180,62 @@ export function OverviewPage({
               setIsDragging(true);
               dragRef.current = { startY: event.clientY, startHeight: terminalHeight };
             }}
-            className="group flex w-full items-center justify-center border-b border-border/60 py-3 text-muted-foreground transition-colors hover:bg-accent/40 dark:border-white/8 dark:hover:bg-white/[0.03]"
+            className="group flex w-full items-center justify-center border-b border-border/70 py-3 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
           >
             <GripHorizontal className="size-4 transition-transform group-hover:scale-110" />
           </button>
 
-          <div className="overflow-hidden" style={{ height: `${terminalHeight}px` }}>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-5 py-3">
+            <div className="flex items-center gap-3">
+              <div className="flex size-8 items-center justify-center rounded-md border border-border/70 bg-muted/40">
+                <TerminalSquare className="size-4 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground">Runtime Console</p>
+                <p className="text-xs text-muted-foreground">Live launcher, cfg, mission and stdout events.</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge className="rounded-md border border-border/70 bg-muted/40 px-2.5 py-1 text-[11px] text-muted-foreground">
+                {runtime.logs.length} entries
+              </Badge>
+              <Badge className="rounded-md border border-border/70 bg-muted/40 px-2.5 py-1 text-[11px] text-muted-foreground">
+                {runtime.status}
+              </Badge>
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-hidden">
             <VirtualList
               ref={terminalRef}
               items={runtime.logs}
-              itemHeight={28}
-              paddingTop={16}
-              paddingBottom={16}
-              className="h-full bg-card/80 font-mono text-[13px] leading-7 text-foreground dark:bg-transparent dark:text-zinc-200"
+              itemHeight={30}
+              paddingTop={14}
+              paddingBottom={14}
+              className="h-full bg-background font-mono text-[13px] leading-7 text-foreground"
               emptyState={<div className="px-5 py-4 text-sm text-muted-foreground">No runtime logs yet.</div>}
               renderItem={(entry, index) => {
                 const levelTone =
                   entry.level === "stderr"
-                    ? "text-rose-600 dark:text-rose-300"
+                    ? "text-destructive"
                     : entry.level === "stdout"
-                      ? "text-sky-700 dark:text-cyan-300"
-                      : "text-emerald-700 dark:text-emerald-300";
+                      ? "text-foreground"
+                      : "text-muted-foreground";
 
                 return (
-                  <div className="px-5 whitespace-pre">
-                    <span className="text-muted-foreground dark:text-zinc-500">{`[${formatLogTime(entry.timestamp)}]`}</span>{" "}
-                    <span className={levelTone}>{`[${entry.level.toUpperCase()}]`}</span>{" "}
-                    <span className="text-emerald-600 dark:text-emerald-400">{`[${index + 1}]`}</span>{" "}
-                    <span>{entry.line}</span>
+                  <div className="grid grid-cols-[90px_72px_56px_minmax(0,1fr)] items-start gap-3 border-b border-border/60 px-5 py-1.5 whitespace-pre">
+                    <span className="text-muted-foreground">{formatLogTime(entry.timestamp)}</span>
+                    <span className={levelTone}>{entry.level.toUpperCase()}</span>
+                    <span className="text-muted-foreground/80">{`#${index + 1}`}</span>
+                    <span className="truncate text-foreground">{entry.line}</span>
                   </div>
                 );
               }}
             />
           </div>
+          </div>
+        </div>
+        </div>
         </div>
       </div>
     </div>

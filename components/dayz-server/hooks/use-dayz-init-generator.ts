@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 
+import { DEFAULT_CHARACTER_CLASS } from "@/components/dayz-server/init-generator-defaults";
+
 type UseDayzInitGeneratorOptions = {
   dayzApi: DesktopBridge["dayz"] | undefined;
   isDesktop: boolean;
@@ -136,7 +138,7 @@ export function useDayzInitGenerator({
     }
 
     if (!dayzApi) {
-      appendPreviewLog("[init] Live init.c preview works in the Electron desktop build.");
+      appendPreviewLog("[init] Live init.c preview works in the desktop build.");
       return;
     }
 
@@ -181,7 +183,7 @@ export function useDayzInitGenerator({
     }
 
     if (!dayzApi) {
-      appendPreviewLog("[init] init.c apply works in the Electron desktop build.");
+      appendPreviewLog("[init] init.c apply works in the desktop build.");
       return;
     }
 
@@ -190,12 +192,17 @@ export function useDayzInitGenerator({
     try {
       const result = await dayzApi.applyInitGenerator(requestPayload);
       setPreviewResult(result);
+      const selectedCharacterClass = requestPayload.state?.loadout?.characterClass?.trim();
       appendPreviewLog(
         result.backupPath
           ? `[init] Backed up existing init.c to ${result.backupPath}`
           : `[init] Created ${result.initPath}`,
       );
       appendPreviewLog(`[init] Applied generated init.c to ${result.initPath}`);
+      appendPreviewLog(
+        `[init] Forced survivor class in generated init.c: ${selectedCharacterClass || DEFAULT_CHARACTER_CLASS}`,
+      );
+      appendPreviewLog("[init] Restart the DayZ server to load the updated init.c changes.", "stderr");
     } catch (error) {
       appendPreviewLog(
         `[init] ${error instanceof Error ? error.message : "Failed to write init.c."}`,
@@ -213,7 +220,7 @@ export function useDayzInitGenerator({
     }
 
     if (!dayzApi) {
-      appendPreviewLog("[init] init.c backup works in the Electron desktop build.");
+      appendPreviewLog("[init] init.c backup works in the desktop build.");
       return;
     }
 
@@ -274,7 +281,13 @@ export function useDayzInitGenerator({
 
     setInitGeneratorState((current) => ({
       ...current,
-      loadout: { ...preset.loadout },
+      loadout: {
+        ...preset.loadout,
+        characterClass:
+          String(preset.loadout.characterClass ?? "").trim() ||
+          String(current.loadout.characterClass ?? "").trim() ||
+          DEFAULT_CHARACTER_CLASS,
+      },
     }));
 
     setPresetNameInput(preset.name);

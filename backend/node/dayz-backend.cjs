@@ -1,30 +1,40 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, session, shell } = require("electron");
 const { spawn } = require("child_process");
+const fs = require("fs");
 const fsp = require("fs/promises");
+const os = require("os");
 const path = require("path");
+const readline = require("readline");
 
-const isDev = !app.isPackaged;
-const shouldOpenDevTools = process.env.ELECTRON_OPEN_DEVTOOLS === "1";
 const MAX_LOG_LINES = 500;
 const DAYZ_WORKSPACE_FILE = "dayz-workspace.json";
 const DAYZ_INIT_START_MARKER = "// >>> DAYZ TOOLS INIT GENERATOR BEGIN";
 const DAYZ_INIT_END_MARKER = "// <<< DAYZ TOOLS INIT GENERATOR END";
+const DEFAULT_CHARACTER_CLASS = "SurvivorM_Boris";
 
 let serverProcess = null;
 let serverRuntime = createRuntimeSnapshot();
 let clientProcess = null;
 let clientRuntime = createClientRuntimeSnapshot();
 let logSequence = 0;
-let hasConfiguredHeaders = false;
 
-const CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' 'unsafe-eval'${isDev ? " http://localhost:3000" : ""}`,
-  "style-src 'self' 'unsafe-inline'",
-  `img-src 'self' data: blob:${isDev ? " http://localhost:3000" : ""}`,
-  "font-src 'self' data:",
-  `connect-src 'self'${isDev ? " ws://localhost:3000 http://localhost:3000" : ""}`,
-].join("; ");
+function emitMessage(message) {
+  process.stdout.write(`${JSON.stringify(message)}\n`);
+}
+
+function emitEvent(event, payload) {
+  emitMessage({ event, payload });
+}
+
+function getDocumentsPath() {
+  return path.join(os.homedir(), "Documents");
+}
+
+function getUserDataPath() {
+  return path.join(
+    process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
+    "dayz-tools",
+  );
+}
 
 function createDefaultInitGeneratorState() {
   return {
@@ -58,7 +68,7 @@ function createDefaultInitGeneratorState() {
       nearObjectOffset: "2 0 2",
     },
     loadout: {
-      characterClass: "",
+      characterClass: DEFAULT_CHARACTER_CLASS,
       body: "TShirt_Black",
       legs: "CargoPants_Black",
       feet: "AthleticShoes_Black",
@@ -101,7 +111,7 @@ function createDefaultInitGeneratorState() {
         id: "preset-light-debug",
         name: "Light Debug",
         loadout: {
-          characterClass: "",
+          characterClass: DEFAULT_CHARACTER_CLASS,
           body: "TShirt_Black",
           legs: "CargoPants_Black",
           feet: "AthleticShoes_Black",
@@ -124,7 +134,7 @@ function createDefaultInitGeneratorState() {
         id: "preset-builder",
         name: "Builder",
         loadout: {
-          characterClass: "",
+          characterClass: DEFAULT_CHARACTER_CLASS,
           body: "Hoodie_Black",
           legs: "CargoPants_Black",
           feet: "WorkingBoots_Black",
@@ -147,7 +157,7 @@ function createDefaultInitGeneratorState() {
         id: "preset-combat",
         name: "Combat Test",
         loadout: {
-          characterClass: "",
+          characterClass: DEFAULT_CHARACTER_CLASS,
           body: "CombatJacket_Black",
           legs: "CombatPants_Black",
           feet: "MilitaryBoots_Black",
@@ -290,11 +300,11 @@ async function runBattleyeInstaller(gameRoot) {
 }
 
 function getDayzClientConfigPath() {
-  return path.join(app.getPath("documents"), "DayZ", "DayZ.cfg");
+  return path.join(getDocumentsPath(), "DayZ", "DayZ.cfg");
 }
 
 function getWorkspaceFilePath() {
-  return path.join(app.getPath("userData"), DAYZ_WORKSPACE_FILE);
+  return path.join(getUserDataPath(), DAYZ_WORKSPACE_FILE);
 }
 
 async function readWorkspaceState() {
@@ -478,13 +488,18 @@ function cloneJson(value) {
 
 function normalizeInitGeneratorState(input = {}) {
   const base = createDefaultInitGeneratorState();
+  const mergedLoadout = { ...base.loadout, ...(input.loadout ?? {}) };
+
+  if (!String(mergedLoadout.characterClass ?? "").trim()) {
+    mergedLoadout.characterClass = DEFAULT_CHARACTER_CLASS;
+  }
 
   return {
     ...base,
     ...input,
     weather: { ...base.weather, ...(input.weather ?? {}) },
     spawn: { ...base.spawn, ...(input.spawn ?? {}) },
-    loadout: { ...base.loadout, ...(input.loadout ?? {}) },
+    loadout: mergedLoadout,
     helpers: { ...base.helpers, ...(input.helpers ?? {}) },
     session: { ...base.session, ...(input.session ?? {}) },
     modHooks: { ...base.modHooks, ...(input.modHooks ?? {}) },
@@ -492,7 +507,12 @@ function normalizeInitGeneratorState(input = {}) {
       Array.isArray(input.loadoutPresets) && input.loadoutPresets.length > 0
         ? input.loadoutPresets.map((preset) => ({
             ...preset,
-            loadout: { ...base.loadout, ...(preset.loadout ?? {}) },
+            loadout: {
+              ...base.loadout,
+              ...(preset.loadout ?? {}),
+              characterClass:
+                String(preset.loadout?.characterClass ?? "").trim() || DEFAULT_CHARACTER_CLASS,
+            },
           }))
         : cloneJson(base.loadoutPresets),
   };
@@ -773,7 +793,8 @@ function buildDateLines(state) {
 
 function buildCreateCharacterLines(state) {
   const spawn = state.spawn;
-  const forcedCharacterClass = String(state.loadout?.characterClass ?? "").trim();
+  const forcedCharacterClass =
+    String(state.loadout?.characterClass ?? "").trim() || DEFAULT_CHARACTER_CLASS;
   const fixedPosition = sanitizeVectorString(spawn.fixedPosition, "7500 0 7500");
   const nearObjectAnchor = sanitizeVectorString(spawn.nearObjectAnchor, fixedPosition);
   const nearObjectOffset = sanitizeVectorString(spawn.nearObjectOffset, "2 0 2");
@@ -808,11 +829,10 @@ function buildCreateCharacterLines(state) {
   }
 
   lines.push(
-    forcedCharacterClass
-      ? `\t\tstring selectedCharacter = "${escapeEnforceString(forcedCharacterClass)}";`
-      : "\t\tstring selectedCharacter = characterName;",
+    `\t\tstring selectedCharacter = "${escapeEnforceString(forcedCharacterClass)}";`,
+    "\t\tcharacterName = selectedCharacter;",
     "\t\tEntity playerEnt;",
-    '\t\tplayerEnt = GetGame().CreatePlayer(identity, selectedCharacter, spawnPosition, 0, "NONE");',
+    '\t\tplayerEnt = GetGame().CreatePlayer(identity, characterName, spawnPosition, 0, "NONE");',
     "\t\tClass.CastTo(m_player, playerEnt);",
     "\t\tGetGame().SelectPlayer(identity, m_player);",
     "\t\treturn m_player;",
@@ -838,7 +858,7 @@ function buildLoadoutLines(state, activeMods) {
   const lines = [];
 
   if (!helpers.autoEquipLoadout) {
-    return ["\t\t// Starter loadout auto-equip is disabled in the generator settings."];
+    return [];
   }
 
   const clothingAttachments = [
@@ -891,15 +911,7 @@ function buildLoadoutLines(state, activeMods) {
 
   const manualModItems = splitClassnameList(modHooks.manualItems);
   if (manualModItems.length > 0) {
-    lines.push("\t\t// Optional mod hook items");
     lines.push(...buildItemCreationLines("player", manualModItems, "\t\t"));
-  }
-
-  if (modHooks.includeActiveModsComment && activeMods.length > 0) {
-    lines.push("\t\t// Active mods at generation time:");
-    for (const mod of activeMods) {
-      lines.push(`\t\t// - ${escapeEnforceString(mod.name)} (${escapeEnforceString(mod.source)})`);
-    }
   }
 
   return lines;
@@ -956,9 +968,6 @@ function generateInitContent(request) {
   const helperLines = buildHelperLines(state);
 
   const lines = [
-    DAYZ_INIT_START_MARKER,
-    "// Generated by DayZ Tools Launcher.",
-    "",
     "void main()",
     "{",
     "\tHive ce = CreateHive();",
@@ -1008,7 +1017,6 @@ function generateInitContent(request) {
     "{",
     "\treturn new DTToolsMission();",
     "}",
-    DAYZ_INIT_END_MARKER,
   ];
 
   return lines.join("\r\n");
@@ -1017,21 +1025,14 @@ function generateInitContent(request) {
 async function previewInitGenerator(request) {
   const missionState = await readMissionInitState(request.missionPath);
   const generatedBlock = generateInitContent(request);
-  const replacedManagedBlock = missionState.hasExistingInit
-    ? replaceManagedInitBlock(missionState.raw, generatedBlock)
-    : null;
 
   return {
     missionPath: missionState.missionPath,
     initPath: missionState.initPath,
-    preview: replacedManagedBlock ?? generatedBlock,
+    preview: generatedBlock,
     hasExistingInit: missionState.hasExistingInit,
-    usesManagedBlock: Boolean(replacedManagedBlock),
-    mode: !missionState.hasExistingInit
-      ? "create"
-      : replacedManagedBlock
-        ? "managed-update"
-        : "full-write",
+    usesManagedBlock: false,
+    mode: missionState.hasExistingInit ? "full-write" : "create",
   };
 }
 
@@ -1686,6 +1687,7 @@ async function parseDayzMod(modRoot, source, extras = {}) {
     source,
     state: hasAddonsDir ? "Detected" : "Incomplete",
     enabled: false,
+    launchMode: source === "Server Root" ? "serverMod" : "mod",
     path: modRoot,
     hasAddonsDir,
     hasKeysDir,
@@ -1910,11 +1912,7 @@ async function inspectModFolder(modRoot) {
 }
 
 function broadcast(channel, payload) {
-  for (const window of BrowserWindow.getAllWindows()) {
-    if (!window.isDestroyed()) {
-      window.webContents.send(channel, payload);
-    }
-  }
+  emitEvent(channel, payload);
 }
 
 function createClientRuntimeSnapshot() {
@@ -2067,31 +2065,38 @@ function attachClientProcess(processHandle, trackedExecutablePath, trackedArgs) 
 }
 
 async function killClientProcess() {
-  if (!clientProcess || clientProcess.killed || clientProcess.exitCode !== null) {
-    clientProcess = null;
-    return setClientRuntime({
-      status: "stopped",
-      pid: null,
-      startedAt: null,
-      executablePath: null,
-      launchArgs: [],
+  const trackedProcess = clientProcess;
+  const trackedExecutableName = path.basename(clientRuntime.executablePath || "").trim();
+  const imageNames = Array.from(
+    new Set(
+      [trackedExecutableName, "DayZ_x64.exe", "DayZ.exe", "DayZ_BE.exe"].filter(Boolean),
+    ),
+  );
+
+  pushServerLog("[client] Stopping DayZ client process...", "info");
+
+  if (trackedProcess && !trackedProcess.killed && trackedProcess.exitCode === null) {
+    await new Promise((resolve, reject) => {
+      const killer = spawn("taskkill", ["/pid", String(trackedProcess.pid), "/t", "/f"], {
+        windowsHide: true,
+        stdio: "ignore",
+      });
+
+      killer.on("error", reject);
+      killer.on("exit", () => resolve());
     });
   }
 
-  const currentProcess = clientProcess;
-  pushServerLog("[client] Stopping DayZ client process...", "info");
+  await killProcessesByImageNames(imageNames);
 
-  await new Promise((resolve, reject) => {
-    const killer = spawn("taskkill", ["/pid", String(currentProcess.pid), "/t", "/f"], {
-      windowsHide: true,
-      stdio: "ignore",
-    });
-
-    killer.on("error", reject);
-    killer.on("exit", () => resolve());
+  clientProcess = null;
+  return setClientRuntime({
+    status: "stopped",
+    pid: null,
+    startedAt: null,
+    executablePath: null,
+    launchArgs: [],
   });
-
-  return clientRuntime;
 }
 
 async function killProcessesByImageNames(imageNames = []) {
@@ -2131,6 +2136,7 @@ async function startServer(options = {}) {
   const enableBattleye = options.enableBattleye !== false;
   const configPath = normalizePath(options.configPath) || detected.configPath;
   const mods = Array.isArray(options.mods) ? options.mods.filter(Boolean) : [];
+  const serverModPaths = Array.isArray(options.serverModPaths) ? options.serverModPaths.filter(Boolean) : [];
   const executableName = path.basename(executablePath);
 
   await killProcessesByImageNames([executableName]);
@@ -2149,6 +2155,10 @@ async function startServer(options = {}) {
     args.push(`-mod=${mods.join(";")}`);
   }
 
+  if (serverModPaths.length > 0) {
+    args.push(`-serverMod=${serverModPaths.join(";")}`);
+  }
+
   if (enableBattleye && battleyePath) {
     args.push(`-BEpath=${battleyePath}`);
   }
@@ -2164,6 +2174,10 @@ async function startServer(options = {}) {
   );
   pushServerLog(
     `[launcher] Mods (${mods.length}): ${mods.length > 0 ? mods.join(";") : "none"}`,
+    "info",
+  );
+  pushServerLog(
+    `[launcher] Server Mods (${serverModPaths.length}): ${serverModPaths.length > 0 ? serverModPaths.join(";") : "none"}`,
     "info",
   );
 
@@ -2225,7 +2239,7 @@ async function launchDayzClient(options = {}) {
   const battleyeExecutablePath = path.join(executableDir, "DayZ_BE.exe");
   const useBattleyeBootstrap = await pathExists(battleyeExecutablePath);
 
-  await killProcessesByImageNames([executableName, "DayZ_BE.exe"]);
+  await killProcessesByImageNames([executableName, "DayZ_x64.exe", "DayZ.exe", "DayZ_BE.exe"]);
 
   if (mods.length > 0) {
     dayzArgs.push(`-mod=${mods.join(";")}`);
@@ -2390,260 +2404,109 @@ async function writeServerConfig(options = {}) {
   return readServerConfig(targetPath);
 }
 
-function createWindow() {
-  const mainWindow = new BrowserWindow({
-    width: 1600,
-    height: 1020,
-    minWidth: 1240,
-    minHeight: 820,
-    show: false,
-    backgroundColor: "#07111f",
-    frame: false,
-    titleBarStyle: "hidden",
-    webPreferences: {
-      preload: path.join(__dirname, "preload.cjs"),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
+const handlers = {
+  "dayz:detect-client-executable": () => resolveClientExecutable(),
+  "dayz:detect-server-paths": (serverRoot) => detectServerPaths(serverRoot),
+  "dayz:auto-detect-server-paths": () => autoDetectServerPaths(),
+  "dayz:get-runtime": () => serverRuntime,
+  "dayz:get-client-runtime": () => clientRuntime,
+  "dayz:start-server": (options) => startServer(options),
+  "dayz:stop-server": () => killServerProcess(),
+  "dayz:restart-server": (options) => restartServer(options),
+  "dayz:read-server-config": (configPath) => readServerConfig(configPath),
+  "dayz:write-server-config": (options) => writeServerConfig(options),
+  "dayz:scan-missions": (missionsRoot) => scanMissions(missionsRoot),
+  "dayz:read-mission-session-settings": (missionPath) => readMissionSessionSettings(missionPath),
+  "dayz:preview-init-generator": (request) => previewInitGenerator(request),
+  "dayz:backup-init-generator": (request) => backupInitGenerator(request),
+  "dayz:apply-init-generator": (request) => applyInitGenerator(request),
+  "dayz:scan-mods": (serverRoot) => scanDayzServerMods(serverRoot),
+  "dayz:scan-workshop-mods": (serverRoot) => scanWorkshopMods(serverRoot),
+  "dayz:inspect-mod-folder": (modRoot) => inspectModFolder(modRoot),
+  "dayz:scan-crash-tools": (profilesPath) => scanCrashTools(profilesPath),
+  "dayz:launch-client": (options) => launchDayzClient(options),
+  "dayz:stop-client": () => killClientProcess(),
+  "dayz:get-workspace-state": () => readWorkspaceState(),
+  "dayz:save-workspace-state": (state) => saveWorkspaceState(state),
+};
 
-  mainWindow.once("ready-to-show", () => {
-    mainWindow.show();
-  });
+async function dispatchMessage(message) {
+  const { id, method, args = [] } = message ?? {};
 
-  if (isDev) {
-    mainWindow.loadURL("http://localhost:3000");
-    if (shouldOpenDevTools) {
-      mainWindow.webContents.openDevTools({ mode: "detach" });
-    }
-  } else {
-    mainWindow.loadFile(path.join(__dirname, "..", "out", "index.html"));
-  }
-
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
-    return { action: "deny" };
-  });
-}
-
-function configureElectronShell() {
-  if (!hasConfiguredHeaders) {
-    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-      callback({
-        responseHeaders: {
-          ...details.responseHeaders,
-          "Content-Security-Policy": [CONTENT_SECURITY_POLICY],
-        },
-      });
+  if (!id || !method) {
+    emitMessage({
+      id: id ?? null,
+      error: "Invalid RPC payload. Expected { id, method, args }.",
     });
-
-    hasConfiguredHeaders = true;
-  }
-
-  Menu.setApplicationMenu(null);
-}
-
-function getWindowFromEvent(event) {
-  return BrowserWindow.fromWebContents(event.sender);
-}
-
-ipcMain.handle("app:minimize-window", async (event) => {
-  const targetWindow = getWindowFromEvent(event);
-  targetWindow?.minimize();
-});
-
-ipcMain.handle("app:toggle-maximize-window", async (event) => {
-  const targetWindow = getWindowFromEvent(event);
-
-  if (!targetWindow) {
-    return false;
-  }
-
-  if (targetWindow.isMaximized()) {
-    targetWindow.unmaximize();
-    return false;
-  }
-
-  targetWindow.maximize();
-  return true;
-});
-
-ipcMain.handle("app:close-window", async (event) => {
-  const targetWindow = getWindowFromEvent(event);
-  targetWindow?.close();
-});
-
-ipcMain.handle("dayz:pick-folder", async (event, options = {}) => {
-  const targetWindow = getWindowFromEvent(event);
-  const result = await dialog.showOpenDialog(targetWindow, {
-    title: "Select Folder",
-    properties: ["openDirectory"],
-    defaultPath: normalizePath(options.defaultPath),
-  });
-
-  if (result.canceled || result.filePaths.length === 0) {
-    return null;
-  }
-
-  return normalizePath(result.filePaths[0]);
-});
-
-ipcMain.handle("dayz:pick-executable", async (event, options = {}) => {
-  const targetWindow = getWindowFromEvent(event);
-  const result = await dialog.showOpenDialog(targetWindow, {
-    title: "Select Executable",
-    properties: ["openFile"],
-    defaultPath: normalizePath(options.defaultPath),
-    filters: [{ name: "Executable", extensions: ["exe"] }],
-  });
-
-  if (result.canceled || result.filePaths.length === 0) {
-    return null;
-  }
-
-  return normalizePath(result.filePaths[0]);
-});
-
-ipcMain.handle("dayz:detect-client-executable", async () => {
-  return resolveClientExecutable();
-});
-
-ipcMain.handle("dayz:detect-server-paths", async (_event, serverRoot) => {
-  return detectServerPaths(serverRoot);
-});
-
-ipcMain.handle("dayz:auto-detect-server-paths", async () => {
-  return autoDetectServerPaths();
-});
-
-ipcMain.handle("dayz:get-runtime", async () => {
-  return serverRuntime;
-});
-
-ipcMain.handle("dayz:get-client-runtime", async () => {
-  return clientRuntime;
-});
-
-ipcMain.handle("dayz:start-server", async (_event, options) => {
-  return startServer(options);
-});
-
-ipcMain.handle("dayz:stop-server", async () => {
-  return killServerProcess();
-});
-
-ipcMain.handle("dayz:restart-server", async (_event, options) => {
-  return restartServer(options);
-});
-
-ipcMain.handle("dayz:read-server-config", async (_event, configPath) => {
-  return readServerConfig(configPath);
-});
-
-ipcMain.handle("dayz:write-server-config", async (_event, options) => {
-  return writeServerConfig(options);
-});
-
-ipcMain.handle("dayz:scan-missions", async (_event, missionsRoot) => {
-  return scanMissions(missionsRoot);
-});
-
-ipcMain.handle("dayz:read-mission-session-settings", async (_event, missionPath) => {
-  return readMissionSessionSettings(missionPath);
-});
-
-ipcMain.handle("dayz:preview-init-generator", async (_event, request) => {
-  return previewInitGenerator(request);
-});
-
-ipcMain.handle("dayz:backup-init-generator", async (_event, request) => {
-  return backupInitGenerator(request);
-});
-
-ipcMain.handle("dayz:apply-init-generator", async (_event, request) => {
-  return applyInitGenerator(request);
-});
-
-ipcMain.handle("dayz:scan-mods", async (_event, serverRoot) => {
-  return scanDayzServerMods(serverRoot);
-});
-
-ipcMain.handle("dayz:scan-workshop-mods", async (_event, serverRoot) => {
-  return scanWorkshopMods(serverRoot);
-});
-
-ipcMain.handle("dayz:inspect-mod-folder", async (_event, modRoot) => {
-  return inspectModFolder(modRoot);
-});
-
-ipcMain.handle("dayz:scan-crash-tools", async (_event, profilesPath) => {
-  return scanCrashTools(profilesPath);
-});
-
-ipcMain.handle("dayz:open-path", async (_event, targetPath) => {
-  const normalizedPath = normalizePath(targetPath);
-
-  if (!normalizedPath) {
-    throw new Error("Path is required.");
-  }
-
-  let stats = null;
-
-  try {
-    stats = await fsp.stat(normalizedPath);
-  } catch {
-    throw new Error(`Path was not found: ${normalizedPath}`);
-  }
-
-  if (stats.isDirectory()) {
-    const shellResult = await shell.openPath(normalizedPath);
-
-    if (!shellResult) {
-      return;
-    }
-
-    const child = spawn("explorer.exe", [normalizedPath], {
-      windowsHide: true,
-      detached: true,
-      stdio: "ignore",
-    });
-
-    child.unref();
     return;
   }
 
-  shell.showItemInFolder(normalizedPath);
-});
+  const handler = handlers[method];
 
-ipcMain.handle("dayz:launch-client", async (_event, options) => {
-  return launchDayzClient(options);
-});
-
-ipcMain.handle("dayz:stop-client", async () => {
-  return killClientProcess();
-});
-
-ipcMain.handle("dayz:get-workspace-state", async () => {
-  return readWorkspaceState();
-});
-
-ipcMain.handle("dayz:save-workspace-state", async (_event, state) => {
-  return saveWorkspaceState(state);
-});
-
-app.whenReady().then(() => {
-  configureElectronShell();
-  createWindow();
-
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
-  });
-});
-
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
+  if (!handler) {
+    emitMessage({ id, error: `Unknown method: ${method}` });
+    return;
   }
+
+  try {
+    const result = await handler(...args);
+    emitMessage({ id, result });
+  } catch (error) {
+    emitMessage({
+      id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function setupRpcTransport() {
+  process.stdin.setEncoding("utf8");
+
+  const input = readline.createInterface({
+    input: process.stdin,
+    crlfDelay: Infinity,
+  });
+
+  input.on("line", (line) => {
+    if (!line.trim()) {
+      return;
+    }
+
+    let message = null;
+
+    try {
+      message = JSON.parse(line);
+    } catch {
+      emitMessage({
+        id: null,
+        error: "Failed to parse backend RPC payload as JSON.",
+      });
+      return;
+    }
+
+    void dispatchMessage(message);
+  });
+}
+
+async function shutdown() {
+  try {
+    await killClientProcess().catch(() => undefined);
+    await killServerProcess().catch(() => undefined);
+  } finally {
+    process.exit(0);
+  }
+}
+
+process.on("SIGINT", () => {
+  void shutdown();
 });
+
+process.on("SIGTERM", () => {
+  void shutdown();
+});
+
+setupRpcTransport();
+
+if (!process.stdin.readable && fs.existsSync(__filename)) {
+  emitMessage({ event: "backend:ready", payload: true });
+}

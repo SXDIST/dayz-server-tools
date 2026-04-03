@@ -5,9 +5,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PROFILES_LABEL } from "@/components/dayz-server/constants";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { VirtualList } from "@/components/ui/virtual-list";
+import {
+  WorkspaceEmptyState,
+  WorkspaceMetricTile,
+  WorkspacePage,
+  WorkspacePageHeader,
+  WorkspacePanel,
+} from "@/components/workspace/workspace-kit";
 import { cn } from "@/lib/utils";
 
 function formatBytes(sizeBytes: number) {
@@ -50,25 +56,18 @@ function formatDate(value: string) {
 function severityTone(severity: DayzCrashAnalysis["severity"]) {
   switch (severity) {
     case "error":
-      return "border-red-500/30 bg-red-500/8 text-red-100";
+      return "border-destructive/30 bg-destructive/5 text-foreground";
     case "warning":
-      return "border-amber-500/30 bg-amber-500/8 text-amber-100";
+      return "border-border bg-muted/40 text-foreground";
     default:
-      return "border-border/60 bg-background/50 text-foreground";
+      return "border-border bg-muted/30 text-foreground";
   }
 }
 
 function ArtifactKindBadge({ kind }: { kind: DayzCrashArtifact["kind"] }) {
-  const tone =
-    kind === "crash"
-      ? "border-red-500/30 bg-red-500/8 text-red-100"
-      : kind === "script"
-        ? "border-amber-500/30 bg-amber-500/8 text-amber-100"
-        : kind === "mdmp"
-          ? "border-violet-500/30 bg-violet-500/8 text-violet-100"
-          : "border-sky-500/30 bg-sky-500/8 text-sky-100";
+  const tone = kind === "crash" ? "border-border bg-muted text-foreground" : "border-border bg-background text-muted-foreground";
 
-  return <span className={cn("rounded-lg border px-2 py-1 text-[11px] uppercase tracking-[0.16em]", tone)}>{kind}</span>;
+  return <span className={cn("rounded-md border px-2 py-1 text-[11px]", tone)}>{kind}</span>;
 }
 
 function ExcerptCard({
@@ -79,27 +78,22 @@ function ExcerptCard({
   lines: string[];
 }) {
   return (
-    <Card className="rounded-2xl border border-border/70 bg-card/95 shadow-none">
-      <CardHeader className="border-b border-border/60 px-4 py-3">
-        <CardTitle className="text-sm">{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="p-4">
+    <WorkspacePanel title={title} contentClassName="p-4">
         {lines.length > 0 ? (
           <VirtualList
             items={lines}
             itemHeight={24}
             paddingTop={16}
             paddingBottom={16}
-            className="code-surface max-h-[28rem] min-h-[20rem] rounded-xl border border-border/60 font-mono text-xs leading-6 select-text"
+            className="code-surface max-h-[28rem] min-h-[20rem] rounded-lg border font-mono text-xs leading-6 select-text"
             renderItem={(line) => <div className="px-4 whitespace-pre">{line}</div>}
           />
         ) : (
-          <div className="rounded-xl border border-dashed border-border/60 px-4 py-8 text-sm text-muted-foreground">
+          <div className="rounded-lg border border-dashed px-4 py-8 text-sm text-muted-foreground">
             No lines captured for this artifact yet.
           </div>
         )}
-      </CardContent>
-    </Card>
+    </WorkspacePanel>
   );
 }
 
@@ -139,13 +133,13 @@ export function CrashToolsPage() {
           },
           analysis: {
             severity: "warning",
-            summary: "Crash Tools backend is unavailable in the current Electron session.",
+            summary: "Crash Tools backend is unavailable in the current desktop session.",
             probableCause:
               error instanceof Error ? error.message : "Failed to scan crash artifacts.",
             exceptionCode: "",
             signals: [],
             recommendations: [
-              "Fully restart npm run dev so Electron main/preload pick up the new Crash Tools IPC handlers.",
+              "Fully restart the desktop dev session so the native backend picks up the latest Crash Tools handlers.",
             ],
           },
         });
@@ -227,44 +221,41 @@ export function CrashToolsPage() {
   );
 
   return (
-    <div className="space-y-4">
-      <Card className="rounded-2xl border border-border/70 bg-card/95 shadow-none">
-        <CardHeader className="border-b border-border/60 px-5 py-4">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl border border-border/60 bg-muted/30">
-                <Siren className="size-4 text-muted-foreground" />
-              </div>
-              <div>
-                <CardTitle className="text-base">Crash Tools</CardTitle>
-                <CardDescription className="mt-1">
-                  Scan the DayZ Server profiles folder, inspect recent RPT/script/crash artifacts and surface the most likely crash cause.
-                </CardDescription>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" onClick={() => void handleBrowseProfiles()} disabled={!isDesktop}>
-                <FolderSearch className="size-4" />
-                Browse Profiles
-              </Button>
-              <Button variant="outline" onClick={() => void handleOpenPath(profilesPath)} disabled={!profilesPath || !isDesktop}>
-                <FileTerminal className="size-4" />
-                Open Profiles
-              </Button>
-              <Button variant="default" onClick={() => void refreshCrashData(profilesPath)} disabled={!profilesPath || isPending || !isDesktop}>
-                <RefreshCw className={cn("size-4", isPending && "animate-spin")} />
-                Refresh
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4 p-5">
+    <WorkspacePage>
+      <WorkspacePageHeader
+        eyebrow="Diagnostics"
+        title="Crash Tools"
+        description="Summary first, then signals, artifacts and excerpts. The page now reads like an investigation flow instead of a raw dump of panes."
+        actions={
+          <>
+            <Button variant="outline" onClick={() => void handleBrowseProfiles()} disabled={!isDesktop}>
+              <FolderSearch className="size-4" />
+              Browse Profiles
+            </Button>
+            <Button variant="outline" onClick={() => void handleOpenPath(profilesPath)} disabled={!profilesPath || !isDesktop}>
+              <FileTerminal className="size-4" />
+              Open Profiles
+            </Button>
+            <Button variant="default" onClick={() => void refreshCrashData(profilesPath)} disabled={!profilesPath || isPending || !isDesktop}>
+              <RefreshCw className={cn("size-4", isPending && "animate-spin")} />
+              Refresh
+            </Button>
+          </>
+        }
+      />
+
+      <WorkspacePanel
+        title="Crash Summary"
+        description="Scan the DayZ Server profiles folder, inspect recent RPT/script/crash artifacts and surface the most likely crash cause."
+        icon={Siren}
+      >
+        <div className="space-y-4">
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-2">
               <p className="text-sm font-medium text-foreground">Profiles Path</p>
               <Input value={profilesPath} onChange={(event) => setProfilesPath(event.target.value)} placeholder="C:\\DayZServer\\profiles" />
             </div>
-            <div className={cn("rounded-2xl border p-4", severityTone(snapshot?.analysis.severity ?? "info"))}>
+            <div className={cn("rounded-lg border p-4", severityTone(snapshot?.analysis.severity ?? "info"))}>
               <div className="flex items-start gap-3">
                 <TriangleAlert className="mt-0.5 size-4 shrink-0" />
                 <div>
@@ -275,7 +266,7 @@ export function CrashToolsPage() {
                     {snapshot?.analysis.probableCause ?? "No probable cause calculated yet."}
                   </p>
                   {snapshot?.analysis.exceptionCode ? (
-                    <p className="mt-2 text-xs uppercase tracking-[0.16em] opacity-80">
+                    <p className="mt-2 text-xs opacity-80">
                       Exception {snapshot.analysis.exceptionCode}
                     </p>
                   ) : null}
@@ -291,25 +282,20 @@ export function CrashToolsPage() {
               ["Script", String(artifactCounts.script)],
               ["Crash", String(artifactCounts.crash + artifactCounts.mdmp)],
             ].map(([label, value]) => (
-              <div key={label} className="rounded-xl border border-border/60 bg-background/40 p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-                <p className="mt-2 text-lg font-semibold text-foreground">{value}</p>
-              </div>
+              <WorkspaceMetricTile key={label} label={label} value={value} note="Current scan snapshot" />
             ))}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </WorkspacePanel>
 
       <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_560px]">
-        <Card className="rounded-2xl border border-border/70 bg-card/95 shadow-none">
-          <CardHeader className="border-b border-border/60 px-5 py-4">
-            <CardTitle className="text-base">Recent Artifacts</CardTitle>
-            <CardDescription>Latest crash-related files discovered in the selected profiles folder.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-5">
+        <WorkspacePanel
+          title="Recent Artifacts"
+          description="Latest crash-related files discovered in the selected profiles folder."
+        >
             <div className="space-y-3">
               {(snapshot?.artifacts ?? []).map((artifact) => (
-                <div key={artifact.id} className="rounded-xl border border-border/60 bg-background/40 p-4">
+                <div key={artifact.id} className="rounded-lg border bg-muted/20 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -324,15 +310,15 @@ export function CrashToolsPage() {
                   </div>
                   <div className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-3">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Modified</p>
+                      <p className="text-xs font-medium text-muted-foreground">Modified</p>
                       <p className="mt-1 text-foreground">{formatDate(artifact.modifiedAt)}</p>
                     </div>
                     <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Size</p>
+                      <p className="text-xs font-medium text-muted-foreground">Size</p>
                       <p className="mt-1 text-foreground">{formatBytes(artifact.sizeBytes)}</p>
                     </div>
                     <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Latest Of Kind</p>
+                      <p className="text-xs font-medium text-muted-foreground">Latest Of Kind</p>
                       <p className="mt-1 text-foreground">
                         {latestArtifacts[artifact.kind]?.id === artifact.id ? "Yes" : "No"}
                       </p>
@@ -341,54 +327,52 @@ export function CrashToolsPage() {
                 </div>
               ))}
               {(snapshot?.artifacts?.length ?? 0) === 0 ? (
-                <div className="rounded-xl border border-dashed border-border/60 px-4 py-10 text-center text-sm text-muted-foreground">
-                  No crash-related files were found in this profiles folder yet.
-                </div>
+                <WorkspaceEmptyState
+                  icon={FileTerminal}
+                  title="No artifacts yet"
+                  description="No crash-related files were found in this profiles folder yet. Point the tool to the active DayZ profiles folder and run another scan."
+                />
               ) : null}
             </div>
-          </CardContent>
-        </Card>
+        </WorkspacePanel>
 
         <div className="space-y-4">
-          <Card className="rounded-2xl border border-border/70 bg-card/95 shadow-none">
-            <CardHeader className="border-b border-border/60 px-5 py-4">
-              <CardTitle className="text-base">Analysis Signals</CardTitle>
-              <CardDescription>Signals extracted from the latest text artifacts.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 p-5">
+          <WorkspacePanel
+            title="Analysis Signals"
+            description="Signals extracted from the latest text artifacts."
+          >
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Detected signals</p>
+                <p className="text-xs font-medium text-muted-foreground">Detected signals</p>
                 <div className="mt-3 space-y-2">
                   {(snapshot?.analysis.signals ?? []).map((signal) => (
                     <div
                       key={signal}
-                      className="rounded-xl border border-border/60 bg-background/40 px-3 py-2 text-sm text-foreground select-text"
+                      className="rounded-lg border bg-muted/20 px-3 py-2 text-sm text-foreground select-text"
                     >
                       {signal}
                     </div>
                   ))}
                   {(snapshot?.analysis.signals?.length ?? 0) === 0 ? (
-                    <div className="rounded-xl border border-dashed border-border/60 px-3 py-4 text-sm text-muted-foreground">
+                    <div className="rounded-lg border border-dashed px-3 py-4 text-sm text-muted-foreground">
                       No strong crash signals detected yet.
                     </div>
                   ) : null}
                 </div>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">Recommendations</p>
+                <p className="text-xs font-medium text-muted-foreground">Recommendations</p>
                 <div className="mt-3 space-y-2">
                   {(snapshot?.analysis.recommendations ?? []).map((recommendation) => (
                     <div
                       key={recommendation}
-                      className="rounded-xl border border-border/60 bg-background/40 px-3 py-2 text-sm text-foreground select-text"
+                      className="rounded-lg border bg-muted/20 px-3 py-2 text-sm text-foreground select-text"
                     >
                       {recommendation}
                     </div>
                   ))}
                 </div>
               </div>
-            </CardContent>
-          </Card>
+          </WorkspacePanel>
 
           <ExcerptCard title="Latest RPT Excerpt" lines={snapshot?.excerpts.rpt ?? []} />
           <ExcerptCard title="Latest Script Log Excerpt" lines={snapshot?.excerpts.script ?? []} />
@@ -397,13 +381,13 @@ export function CrashToolsPage() {
       </div>
 
       {!isDesktop ? (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/8 px-4 py-3 text-sm text-amber-100">
+        <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm text-foreground">
           <div className="flex items-center gap-2">
             <AlertTriangle className="size-4" />
-            Crash Tools works in the Electron desktop build, where the launcher can access local DayZ Server log files.
+            Crash Tools works in the desktop build, where the launcher can access local DayZ Server log files.
           </div>
         </div>
       ) : null}
-    </div>
+    </WorkspacePage>
   );
 }

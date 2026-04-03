@@ -30,7 +30,7 @@ function HeaderModuleButton({
     <button
       type="button"
       className={cn(
-        "app-no-drag inline-flex h-10 items-center justify-center rounded-xl px-4 py-2 text-sm font-medium transition-colors",
+        "app-no-drag inline-flex h-9 items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors",
         active
           ? "bg-accent text-accent-foreground"
           : "text-foreground/82 hover:bg-accent/70 hover:text-foreground",
@@ -59,7 +59,7 @@ function WindowButton({
       aria-label={label}
       title={label}
       className={cn(
-        "app-no-drag inline-flex size-9 items-center justify-center rounded-lg border border-border/60 bg-card/70 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+        "app-no-drag inline-flex size-9 items-center justify-center rounded-md border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
         className,
       )}
       onClick={onClick}
@@ -121,11 +121,11 @@ export function AppHeader({
   const toolsActive = dropdownModules.some((module) => module.id === activeView);
 
   return (
-    <header className="app-drag-region fixed inset-x-0 top-0 z-50 border-b border-border/70 bg-card/92 backdrop-blur-xl">
+    <header className="app-drag-region fixed inset-x-0 top-0 z-50 border-b bg-background">
       <div className="overflow-visible px-4 py-3 pr-5">
         <div className="flex items-center gap-3">
           <div className="app-no-drag flex min-w-0 items-center gap-2.5">
-            <div className="flex size-9 items-center justify-center rounded-xl border border-border/60 bg-muted/35">
+            <div className="flex size-9 items-center justify-center rounded-lg border bg-muted">
               <Boxes className="size-4" />
             </div>
             <div className="min-w-0">
@@ -136,7 +136,7 @@ export function AppHeader({
 
           <div className="min-w-0 flex flex-1 justify-center">
             <div className="relative flex w-full max-w-[760px] justify-center" ref={toolsMenuRef}>
-              <div className="flex items-center justify-center gap-1 rounded-2xl border border-border/70 bg-card/85 p-1">
+              <div className="flex items-center justify-center gap-1 rounded-lg border bg-background p-1">
                 <HeaderModuleButton
                   active={activeView === "dayz-server"}
                   label="DayZ Server"
@@ -150,7 +150,7 @@ export function AppHeader({
                 <button
                   type="button"
                   className={cn(
-                    "app-no-drag inline-flex h-10 items-center justify-center rounded-xl px-4 py-2 text-sm font-medium transition-colors",
+                    "app-no-drag inline-flex h-9 items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors",
                     toolsActive || isToolsOpen
                       ? "bg-accent text-accent-foreground"
                       : "text-foreground/82 hover:bg-accent/70 hover:text-foreground",
@@ -170,7 +170,7 @@ export function AppHeader({
               </div>
 
               {isToolsOpen ? (
-                <div className="app-no-drag absolute top-full left-1/2 z-50 mt-2.5 w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 rounded-2xl border border-border/70 bg-popover/95 p-2.5 shadow-lg backdrop-blur-xl">
+                <div className="app-no-drag absolute top-full left-1/2 z-50 mt-2.5 w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 rounded-lg border bg-popover p-2">
                   <div className="grid gap-2">
                     {dropdownModules.map((module) => {
                       const Icon = moduleIconMap[module.id];
@@ -184,12 +184,12 @@ export function AppHeader({
                             setIsToolsOpen(false);
                           }}
                           className={cn(
-                            "rounded-xl border border-border/60 bg-card/70 p-3 text-left transition-colors hover:bg-accent/60",
+                            "rounded-lg border bg-background p-3 text-left transition-colors hover:bg-accent/60",
                             activeView === module.id && "bg-accent",
                           )}
                         >
                           <div className="flex items-center gap-3">
-                            <div className="flex size-9 items-center justify-center rounded-lg border border-border/60 bg-muted/35">
+                            <div className="flex size-9 items-center justify-center rounded-md border bg-muted">
                               <Icon className="size-4" />
                             </div>
                             <div className="min-w-0 flex-1">
