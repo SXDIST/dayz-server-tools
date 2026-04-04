@@ -9,3 +9,8 @@ script = ""
 name = "Запустить"
 icon = "run"
 command = "npm run dev"
+
+[[actions]]
+name = "Сборка"
+icon = "tool"
+command = "wails build -clean"
