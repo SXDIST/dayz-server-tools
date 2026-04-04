@@ -29,6 +29,10 @@ function getDocumentsPath() {
   return path.join(os.homedir(), "Documents");
 }
 
+function getLocalAppDataPath() {
+  return process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+}
+
 function getUserDataPath() {
   return path.join(
     process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
@@ -1293,30 +1297,109 @@ function classifyCrashArtifact(name) {
   return null;
 }
 
-function buildCrashSnapshotSkeleton(profilesPath) {
+function getDefaultClientLogsPath() {
+  return path.join(getLocalAppDataPath(), "DayZ");
+}
+
+function createEmptyCrashLatest() {
   return {
-    profilesPath: normalizePath(profilesPath),
+    rpt: null,
+    script: null,
+    crash: null,
+    mdmp: null,
+  };
+}
+
+function createEmptyCrashExcerpts() {
+  return {
+    rpt: [],
+    script: [],
+    crash: [],
+  };
+}
+
+function createCrashAnalysis({
+  severity = "info",
+  summary,
+  probableCause,
+  exceptionCode = "",
+  signals = [],
+  recommendations = [],
+}) {
+  return {
+    severity,
+    summary,
+    probableCause,
+    exceptionCode,
+    signals,
+    recommendations,
+  };
+}
+
+function createCrashSourceSnapshot({
+  source,
+  label,
+  pathValue,
+  analysis,
+}) {
+  return {
+    source,
+    label,
+    path: normalizePath(pathValue),
     artifacts: [],
-    latest: {
-      rpt: null,
-      script: null,
-      crash: null,
-      mdmp: null,
-    },
-    excerpts: {
-      rpt: [],
-      script: [],
-      crash: [],
-    },
-    analysis: {
+    latest: createEmptyCrashLatest(),
+    excerpts: createEmptyCrashExcerpts(),
+    analysis,
+  };
+}
+
+function buildCrashSnapshotSkeleton({ profilesPath, clientLogsPath }) {
+  const normalizedProfilesPath = normalizePath(profilesPath);
+  const normalizedClientLogsPath = normalizePath(clientLogsPath || getDefaultClientLogsPath());
+  const server = createCrashSourceSnapshot({
+    source: "server",
+    label: "Server",
+    pathValue: normalizedProfilesPath,
+    analysis: createCrashAnalysis({
       severity: "info",
-      summary: "No crash artifacts found in the selected profiles folder.",
-      probableCause: "No crash data available yet.",
-      exceptionCode: "",
-      signals: [],
+      summary: "No server crash artifacts found in the selected profiles folder.",
+      probableCause: "No server crash data available yet.",
       recommendations: [
         "Launch the server once and reopen Crash Tools after a crash or script error occurs.",
       ],
+    }),
+  });
+  const client = createCrashSourceSnapshot({
+    source: "client",
+    label: "Client",
+    pathValue: normalizedClientLogsPath,
+    analysis: createCrashAnalysis({
+      severity: "info",
+      summary: "No client crash artifacts found in %LOCALAPPDATA%\\DayZ.",
+      probableCause: "No client crash data available yet.",
+      recommendations: [
+        "Launch the DayZ client once and reopen Crash Tools after a crash or script error occurs.",
+      ],
+    }),
+  });
+
+  return {
+    profilesPath: normalizedProfilesPath,
+    clientLogsPath: normalizedClientLogsPath,
+    artifacts: [],
+    latest: createEmptyCrashLatest(),
+    excerpts: createEmptyCrashExcerpts(),
+    analysis: createCrashAnalysis({
+      severity: "info",
+      summary: "No crash artifacts found in the selected folders.",
+      probableCause: "No crash data available yet.",
+      recommendations: [
+        "Scan the server profiles folder and the DayZ client documents folder after a crash occurs.",
+      ],
+    }),
+    sources: {
+      server,
+      client,
     },
   };
 }
@@ -1406,31 +1489,59 @@ function analyzeCrashArtifacts({ rptText, scriptText, crashText, hasDump }) {
   };
 }
 
-async function scanCrashTools(profilesPath) {
-  const normalizedProfilesPath = normalizePath(profilesPath);
-  const emptySnapshot = buildCrashSnapshotSkeleton(normalizedProfilesPath);
+async function scanCrashArtifactsInDirectory({ rootPath, source, label }) {
+  const normalizedRootPath = normalizePath(rootPath);
+  const missingSummary =
+    source === "server"
+      ? "Server profiles folder is missing or was not selected."
+      : "Client crash folder was not found in %LOCALAPPDATA%\\DayZ.";
+  const missingCause =
+    source === "server"
+      ? "Crash Tools needs a valid DayZ Server profiles path."
+      : "Crash Tools could not find the default DayZ client logs folder in %LOCALAPPDATA%.";
+  const missingRecommendations =
+    source === "server"
+      ? ["Set the correct Profiles path in DayZ Server Settings and refresh Crash Tools."]
+      : ["Launch the DayZ client once so %LOCALAPPDATA%\\DayZ is created, then refresh Crash Tools."];
+  const emptySource = createCrashSourceSnapshot({
+    source,
+    label,
+    pathValue: normalizedRootPath,
+    analysis: createCrashAnalysis({
+      severity: normalizedRootPath ? "info" : "warning",
+      summary:
+        source === "server"
+          ? "No server crash artifacts found in the selected profiles folder."
+          : "No client crash artifacts found in %LOCALAPPDATA%\\DayZ.",
+      probableCause:
+        source === "server"
+          ? "No server crash data available yet."
+          : "No client crash data available yet.",
+      recommendations:
+        source === "server"
+          ? ["Launch the server once and reopen Crash Tools after a crash or script error occurs."]
+          : ["Launch the DayZ client once and reopen Crash Tools after a crash or script error occurs."],
+    }),
+  });
 
-  if (!normalizedProfilesPath || !(await pathExists(normalizedProfilesPath))) {
+  if (!normalizedRootPath || !(await pathExists(normalizedRootPath))) {
     return {
-      ...emptySnapshot,
-      analysis: {
-        ...emptySnapshot.analysis,
+      ...emptySource,
+      analysis: createCrashAnalysis({
         severity: "warning",
-        summary: "Profiles folder is missing or was not selected.",
-        probableCause: "Crash Tools needs a valid DayZ Server profiles path.",
-        recommendations: [
-          "Set the correct Profiles path in DayZ Server Settings and refresh Crash Tools.",
-        ],
-      },
+        summary: missingSummary,
+        probableCause: missingCause,
+        recommendations: missingRecommendations,
+      }),
     };
   }
 
   let entries = [];
 
   try {
-    entries = await fsp.readdir(normalizedProfilesPath, { withFileTypes: true });
+    entries = await fsp.readdir(normalizedRootPath, { withFileTypes: true });
   } catch {
-    return emptySnapshot;
+    return emptySource;
   }
 
   const artifactEntries = await Promise.all(
@@ -1443,11 +1554,12 @@ async function scanCrashTools(profilesPath) {
           return null;
         }
 
-        const filePath = path.join(normalizedProfilesPath, entry.name);
+        const filePath = path.join(normalizedRootPath, entry.name);
         const stats = await fsp.stat(filePath);
 
         return {
-          id: `${kind}-${entry.name.toLowerCase()}`,
+          id: `${source}-${kind}-${entry.name.toLowerCase()}`,
+          source,
           kind,
           name: entry.name,
           path: filePath,
@@ -1475,7 +1587,9 @@ async function scanCrashTools(profilesPath) {
   ]);
 
   return {
-    profilesPath: normalizedProfilesPath,
+    source,
+    label,
+    path: normalizedRootPath,
     artifacts,
     latest,
     excerpts: {
@@ -1489,6 +1603,192 @@ async function scanCrashTools(profilesPath) {
       crashText: latestCrashRaw,
       hasDump: Boolean(latest.mdmp),
     }),
+  };
+}
+
+function severityWeight(severity) {
+  switch (severity) {
+    case "error":
+      return 3;
+    case "warning":
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+function buildCombinedCrashAnalysis(sourceSnapshots) {
+  const allArtifacts = sourceSnapshots.flatMap((snapshot) => snapshot.artifacts);
+
+  if (allArtifacts.length === 0) {
+    return createCrashAnalysis({
+      severity: "info",
+      summary: "No crash artifacts found in the selected folders.",
+      probableCause: "No crash data available yet.",
+      recommendations: [
+        "Launch the server or client once and refresh Crash Tools after a crash or script error occurs.",
+      ],
+    });
+  }
+
+  const sortedAnalyses = sourceSnapshots
+    .map((snapshot) => ({
+      source: snapshot.label,
+      analysis: snapshot.analysis,
+    }))
+    .sort((left, right) => severityWeight(right.analysis.severity) - severityWeight(left.analysis.severity));
+
+  const primary = sortedAnalyses[0];
+  const signals = [];
+  const recommendations = [];
+
+  for (const { source, analysis } of sortedAnalyses) {
+    for (const signal of analysis.signals) {
+      signals.push(`${source}: ${signal}`);
+    }
+
+    recommendations.push(...analysis.recommendations);
+  }
+
+  return createCrashAnalysis({
+    severity: primary.analysis.severity,
+    summary:
+      primary.analysis.severity === "info"
+        ? "Crash artifacts were found, but no strong signature was detected."
+        : `Primary ${primary.source.toLowerCase()} signal: ${primary.analysis.summary}`,
+    probableCause: primary.analysis.probableCause,
+    exceptionCode:
+      sortedAnalyses.find((entry) => entry.analysis.exceptionCode)?.analysis.exceptionCode ?? "",
+    signals: [...new Set(signals)],
+    recommendations: [...new Set(recommendations)],
+  });
+}
+
+async function scanCrashTools(request = {}) {
+  const profilesPath =
+    typeof request === "string"
+      ? request
+      : typeof request?.profilesPath === "string"
+        ? request.profilesPath
+        : "";
+  const clientLogsPath =
+    typeof request === "object" && typeof request?.clientLogsPath === "string"
+      ? request.clientLogsPath
+      : getDefaultClientLogsPath();
+  const emptySnapshot = buildCrashSnapshotSkeleton({ profilesPath, clientLogsPath });
+  const [serverSnapshot, clientSnapshot] = await Promise.all([
+    scanCrashArtifactsInDirectory({
+      rootPath: profilesPath,
+      source: "server",
+      label: "Server",
+    }),
+    scanCrashArtifactsInDirectory({
+      rootPath: clientLogsPath,
+      source: "client",
+      label: "Client",
+    }),
+  ]);
+  const artifacts = [...serverSnapshot.artifacts, ...clientSnapshot.artifacts].sort(
+    (left, right) => new Date(right.modifiedAt).getTime() - new Date(left.modifiedAt).getTime(),
+  );
+
+  return {
+    ...emptySnapshot,
+    artifacts,
+    latest: {
+      rpt: artifacts.find((artifact) => artifact.kind === "rpt") ?? null,
+      script: artifacts.find((artifact) => artifact.kind === "script") ?? null,
+      crash: artifacts.find((artifact) => artifact.kind === "crash") ?? null,
+      mdmp: artifacts.find((artifact) => artifact.kind === "mdmp") ?? null,
+    },
+    excerpts: {
+      rpt: serverSnapshot.excerpts.rpt.length > 0 ? serverSnapshot.excerpts.rpt : clientSnapshot.excerpts.rpt,
+      script:
+        serverSnapshot.excerpts.script.length > 0
+          ? serverSnapshot.excerpts.script
+          : clientSnapshot.excerpts.script,
+      crash:
+        serverSnapshot.excerpts.crash.length > 0
+          ? serverSnapshot.excerpts.crash
+          : clientSnapshot.excerpts.crash,
+    },
+    analysis: buildCombinedCrashAnalysis([serverSnapshot, clientSnapshot]),
+    sources: {
+      server: serverSnapshot,
+      client: clientSnapshot,
+    },
+  };
+}
+
+async function deleteCrashArtifacts(request = {}) {
+  const profilesPath =
+    typeof request?.profilesPath === "string" ? normalizePath(request.profilesPath) : "";
+  const clientLogsPath =
+    typeof request?.clientLogsPath === "string" && request.clientLogsPath.trim()
+      ? normalizePath(request.clientLogsPath)
+      : getDefaultClientLogsPath();
+  const target =
+    request?.target === "server" || request?.target === "client" || request?.target === "all"
+      ? request.target
+      : "all";
+  const sourceDefinitions = [
+    { source: "server", rootPath: profilesPath, enabled: target === "server" || target === "all" },
+    { source: "client", rootPath: clientLogsPath, enabled: target === "client" || target === "all" },
+  ];
+  const deletedPaths = [];
+  const skippedPaths = [];
+  let serverDeletedCount = 0;
+  let clientDeletedCount = 0;
+
+  for (const definition of sourceDefinitions) {
+    if (!definition.enabled || !definition.rootPath || !(await pathExists(definition.rootPath))) {
+      continue;
+    }
+
+    let entries = [];
+
+    try {
+      entries = await fsp.readdir(definition.rootPath, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isFile() || !classifyCrashArtifact(entry.name)) {
+        continue;
+      }
+
+      const filePath = path.join(definition.rootPath, entry.name);
+      try {
+        await fsp.rm(filePath, { force: true });
+        deletedPaths.push(filePath);
+
+        if (definition.source === "server") {
+          serverDeletedCount += 1;
+        } else {
+          clientDeletedCount += 1;
+        }
+      } catch (error) {
+        const code = error?.code;
+
+        if (code === "EBUSY" || code === "EPERM" || code === "EACCES") {
+          skippedPaths.push(filePath);
+          continue;
+        }
+
+        throw error;
+      }
+    }
+  }
+
+  return {
+    target,
+    deletedCount: deletedPaths.length,
+    deletedPaths,
+    serverDeletedCount,
+    clientDeletedCount,
+    skippedCount: skippedPaths.length,
+    skippedPaths,
   };
 }
 
@@ -1885,6 +2185,7 @@ async function scanWorkshopMods(serverRoot) {
       for (const modRoot of modRoots) {
         const parsed = await parseDayzMod(modRoot, "Workshop", {
           workshopId: folder.workshopId,
+          workshopRoot: folder.root,
           id: `workshop-${folder.workshopId}-${path.basename(modRoot).toLowerCase()}`,
           workshopItem,
         });
@@ -1909,6 +2210,82 @@ async function inspectModFolder(modRoot) {
   }
 
   return parseDayzMod(normalizedRoot, "Local Import");
+}
+
+function openExternalTarget(target) {
+  return new Promise((resolve) => {
+    const child = spawn("explorer.exe", [target], {
+      detached: true,
+      stdio: "ignore",
+    });
+
+    child.once("error", () => resolve(false));
+    child.once("spawn", () => {
+      child.unref();
+      resolve(true);
+    });
+  });
+}
+
+async function deleteDayzMod(request = {}) {
+  const source = String(request.source ?? "").trim();
+  const workshopId = String(request.workshopId ?? "").trim();
+  const normalizedPath = normalizePath(request.path);
+  const normalizedWorkshopRoot = normalizePath(request.workshopRoot);
+  const mode = String(request.mode ?? "").trim().toLowerCase();
+
+  if (!normalizedPath) {
+    throw new Error("Mod path is required.");
+  }
+
+  if (mode === "remove-from-list") {
+    return {
+      source,
+      path: normalizedPath,
+      deleteTarget: null,
+      removedFiles: false,
+      removedFromList: true,
+      workshopUnsubscribeOpened: false,
+      workshopUnsubscribeTarget: null,
+    };
+  }
+
+  const deleteTarget =
+    source === "Workshop" && normalizedWorkshopRoot ? normalizedWorkshopRoot : normalizedPath;
+
+  if (!(await pathExists(deleteTarget))) {
+    throw new Error(`Mod folder was not found: ${deleteTarget}`);
+  }
+
+  const stats = await fsp.stat(deleteTarget);
+  if (!stats.isDirectory()) {
+    throw new Error(`Expected a mod folder, got a file: ${deleteTarget}`);
+  }
+
+  await fsp.rm(deleteTarget, { recursive: true, force: true });
+
+  let workshopUnsubscribeOpened = false;
+  let workshopUnsubscribeTarget = null;
+
+  if (source === "Workshop" && workshopId) {
+    workshopUnsubscribeTarget = `steam://url/CommunityFilePage/${workshopId}`;
+    workshopUnsubscribeOpened = await openExternalTarget(workshopUnsubscribeTarget);
+
+    if (!workshopUnsubscribeOpened) {
+      workshopUnsubscribeTarget = `https://steamcommunity.com/sharedfiles/filedetails/?id=${workshopId}`;
+      workshopUnsubscribeOpened = await openExternalTarget(workshopUnsubscribeTarget);
+    }
+  }
+
+  return {
+    source,
+    path: normalizedPath,
+    deleteTarget,
+    removedFiles: true,
+    removedFromList: true,
+    workshopUnsubscribeOpened,
+    workshopUnsubscribeTarget,
+  };
 }
 
 function broadcast(channel, payload) {
@@ -2423,7 +2800,9 @@ const handlers = {
   "dayz:scan-mods": (serverRoot) => scanDayzServerMods(serverRoot),
   "dayz:scan-workshop-mods": (serverRoot) => scanWorkshopMods(serverRoot),
   "dayz:inspect-mod-folder": (modRoot) => inspectModFolder(modRoot),
-  "dayz:scan-crash-tools": (profilesPath) => scanCrashTools(profilesPath),
+  "dayz:delete-mod": (request) => deleteDayzMod(request),
+  "dayz:scan-crash-tools": (request) => scanCrashTools(request),
+  "dayz:delete-crash-artifacts": (request) => deleteCrashArtifacts(request),
   "dayz:launch-client": (options) => launchDayzClient(options),
   "dayz:stop-client": () => killClientProcess(),
   "dayz:get-workspace-state": () => readWorkspaceState(),

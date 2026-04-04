@@ -436,9 +436,21 @@ func (a *App) DayzInspectModFolder(modRoot string) (any, error) {
 	return result, err
 }
 
-func (a *App) DayzScanCrashTools(profilesPath string) (any, error) {
+func (a *App) DayzDeleteMod(request any) (any, error) {
 	var result any
-	err := a.callBackend("dayz:scan-crash-tools", &result, profilesPath)
+	err := a.callBackend("dayz:delete-mod", &result, request)
+	return result, err
+}
+
+func (a *App) DayzScanCrashTools(request any) (any, error) {
+	var result any
+	err := a.callBackend("dayz:scan-crash-tools", &result, request)
+	return result, err
+}
+
+func (a *App) DayzDeleteCrashArtifacts(request any) (any, error) {
+	var result any
+	err := a.callBackend("dayz:delete-crash-artifacts", &result, request)
 	return result, err
 }
 

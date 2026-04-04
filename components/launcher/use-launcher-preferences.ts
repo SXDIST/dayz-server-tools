@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   defaultLauncherPreferences,
-  launcherLastViewStorageKey,
   launcherPreferencesStorageKey,
   normalizeLauncherPreferences,
   resolveFontVariable,
@@ -31,13 +30,6 @@ export function useLauncherPreferences() {
 
     return normalizeLauncherPreferences(window.__DAYZ_LAUNCHER_BOOTSTRAP__?.preferences);
   });
-  const [lastView, setLastView] = useState(() => {
-    if (typeof window === "undefined") {
-      return "dayz-server";
-    }
-
-    return window.__DAYZ_LAUNCHER_BOOTSTRAP__?.lastView || "dayz-server";
-  });
   const [loaded] = useState(typeof window !== "undefined");
   const hasHydratedRef = useRef(false);
   const fontSignatureRef = useRef("");
@@ -49,14 +41,6 @@ export function useLauncherPreferences() {
 
     window.localStorage.setItem(launcherPreferencesStorageKey, JSON.stringify(preferences));
   }, [loaded, preferences]);
-
-  useEffect(() => {
-    if (!loaded || !preferences.rememberLastView) {
-      return;
-    }
-
-    window.localStorage.setItem(launcherLastViewStorageKey, lastView);
-  }, [lastView, loaded, preferences.rememberLastView]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -95,8 +79,6 @@ export function useLauncherPreferences() {
 
   useEffect(() => {
     const root = document.documentElement;
-    root.dataset.reduceMotion = preferences.reduceMotion ? "true" : "false";
-    root.dataset.compactSidebar = preferences.compactSidebar ? "true" : "false";
 
     const interfaceFont =
       preferences.interfaceMode === "mono"
@@ -157,7 +139,5 @@ export function useLauncherPreferences() {
     preferences,
     setPreferences,
     loaded,
-    lastView,
-    setLastView,
   };
 }

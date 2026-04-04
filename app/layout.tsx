@@ -67,7 +67,9 @@ const desktopBridgeScript = `
 
   window.desktopBridge = {
     platform: navigator.platform || "unknown",
-    isElectron: !!getApp(),
+    get isElectron() {
+      return !!getApp() || !!getRuntime();
+    },
     app: {
       minimizeWindow: () => invoke("AppMinimizeWindow"),
       toggleMaximizeWindow: () => invoke("AppToggleMaximizeWindow"),
@@ -94,7 +96,9 @@ const desktopBridgeScript = `
       scanMods: (serverRoot) => invoke("DayzScanMods", serverRoot),
       scanWorkshopMods: (serverRoot) => invoke("DayzScanWorkshopMods", serverRoot),
       inspectModFolder: (modRoot) => invoke("DayzInspectModFolder", modRoot),
-      scanCrashTools: (profilesPath) => invoke("DayzScanCrashTools", profilesPath),
+      deleteMod: (request) => invoke("DayzDeleteMod", request),
+      scanCrashTools: (request) => invoke("DayzScanCrashTools", request || {}),
+      deleteCrashArtifacts: (request) => invoke("DayzDeleteCrashArtifacts", request),
       openPath: (targetPath) => invoke("DayzOpenPath", targetPath),
       launchClient: (options) => invoke("DayzLaunchClient", options),
       stopClient: () => invoke("DayzStopClient"),
@@ -112,7 +116,6 @@ const launcherBootstrapScript = `
 (() => {
   try {
     const storageKey = "dayz-tools.launcher-preferences";
-    const lastViewKey = "dayz-tools.last-view";
     const defaults = {
       themeMode: "dark",
       interfaceMode: "mono",
@@ -121,18 +124,12 @@ const launcherBootstrapScript = `
       headingMode: "mono",
       headingSansFont: "geist",
       headingMonoFont: "jetbrains-mono",
-      backgroundEffects: true,
-      reduceMotion: false,
-      compactSidebar: false,
-      rememberLastView: true,
     };
     const raw = window.localStorage.getItem(storageKey);
-    const rawLastView = window.localStorage.getItem(lastViewKey);
     const prefs = raw ? { ...defaults, ...JSON.parse(raw) } : defaults;
     const root = document.documentElement;
     window.__DAYZ_LAUNCHER_BOOTSTRAP__ = {
       preferences: prefs,
-      lastView: rawLastView || "dayz-server",
     };
     const resolveFontVariable = (fontId) => {
       switch (fontId) {
@@ -170,8 +167,6 @@ const launcherBootstrapScript = `
 
     root.classList.toggle("dark", resolvedTheme === "dark");
     root.classList.toggle("light", resolvedTheme === "light");
-    root.dataset.reduceMotion = prefs.reduceMotion ? "true" : "false";
-    root.dataset.compactSidebar = prefs.compactSidebar ? "true" : "false";
     root.style.setProperty("--app-font-sans", interfaceFont);
     root.style.setProperty("--app-font-mono", monoFont);
     root.style.setProperty("--app-font-heading", headingFont);

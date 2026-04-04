@@ -1,8 +1,8 @@
 "use client";
 
-import { MonitorCog, Palette, PanelsTopLeft } from "lucide-react";
+import { Palette } from "lucide-react";
 
-import { SelectField, ToggleField } from "@/components/dayz-server/form-controls";
+import { SelectField } from "@/components/dayz-server/form-controls";
 import {
   fontModeOptions,
   monoFontOptions,
@@ -42,7 +42,7 @@ export function SettingsPage({
         actions={
           <>
             <Badge variant="secondary">{preferences.themeMode}</Badge>
-            <Badge variant="outline">{preferences.compactSidebar ? "Compact Nav" : "Comfort Nav"}</Badge>
+            <Badge variant="outline">{preferences.interfaceMode === "mono" ? "Mono UI" : "Sans UI"}</Badge>
           </>
         }
       />
@@ -112,48 +112,6 @@ export function SettingsPage({
             />
           } />
           </WorkspacePanel>
-
-          <WorkspacePanel
-          title="Interface"
-          description="Visual comfort and shell layout behavior."
-          icon={PanelsTopLeft}
-        >
-          <WorkspaceField label="Background Effects" description="Show or hide stars and meteor animations behind the workspace." control={
-            <ToggleField
-              checked={preferences.backgroundEffects}
-              label={preferences.backgroundEffects ? "Enabled" : "Disabled"}
-              onCheckedChange={(checked) => updatePreference("backgroundEffects", checked)}
-            />
-          } />
-          <WorkspaceField label="Reduce Motion" description="Tone down animated transitions and decorative movement." control={
-            <ToggleField
-              checked={preferences.reduceMotion}
-              label={preferences.reduceMotion ? "Enabled" : "Disabled"}
-              onCheckedChange={(checked) => updatePreference("reduceMotion", checked)}
-            />
-          } />
-          <WorkspaceField label="Compact Sidebar" description="Use a denser launcher sidebar with smaller spacing." control={
-            <ToggleField
-              checked={preferences.compactSidebar}
-              label={preferences.compactSidebar ? "Compact" : "Comfort"}
-              onCheckedChange={(checked) => updatePreference("compactSidebar", checked)}
-            />
-          } />
-          </WorkspacePanel>
-
-          <WorkspacePanel
-          title="Behavior"
-          description="Useful launcher workflow preferences."
-          icon={MonitorCog}
-        >
-          <WorkspaceField label="Remember Last Page" description="Restore the last opened launcher page on next startup." control={
-            <ToggleField
-              checked={preferences.rememberLastView}
-              label={preferences.rememberLastView ? "Enabled" : "Disabled"}
-              onCheckedChange={(checked) => updatePreference("rememberLastView", checked)}
-            />
-          } />
-          </WorkspacePanel>
         </div>
 
         <div className="space-y-4">
@@ -168,9 +126,9 @@ export function SettingsPage({
             note="Heading and interface fonts can be split for readability."
           />
           <WorkspaceMetricTile
-            label="Motion"
-            value={preferences.reduceMotion ? "Reduced" : "Full"}
-            note="Affects decorative background effects and transitions."
+            label="Headings"
+            value={preferences.headingMode === "mono" ? "Mono" : "Sans"}
+            note="Heading family can be tuned independently from the interface font."
           />
         </div>
       </div>

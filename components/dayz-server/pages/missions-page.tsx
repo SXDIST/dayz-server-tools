@@ -34,6 +34,14 @@ type MissionsPageProps = Pick<
 >;
 
 export function MissionsPage(props: MissionsPageProps) {
+  const selectMission = (missionName: string) => {
+    props.setServerConfigValues((current) => ({
+      ...current,
+      template: missionName,
+    }));
+    props.setInitSelectedMissionName(missionName);
+  };
+
   return (
     <Section title="Missions" description="Detected mission folders from mpmissions with quick selection for Server.cfg and init.c generation.">
       <div className="space-y-4">
@@ -60,6 +68,15 @@ export function MissionsPage(props: MissionsPageProps) {
               return (
                 <div
                   key={mission.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => selectMission(mission.name)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      selectMission(mission.name);
+                    }
+                  }}
                   className={`w-[520px] shrink-0 rounded-2xl border p-5 transition-colors ${
                     isActive
                       ? "border-border bg-accent text-accent-foreground"
@@ -92,13 +109,7 @@ export function MissionsPage(props: MissionsPageProps) {
                       <Button
                         size="sm"
                         variant={isActive ? "secondary" : "outline"}
-                        onClick={() => {
-                          props.setServerConfigValues((current) => ({
-                            ...current,
-                            template: mission.name,
-                          }));
-                          props.setInitSelectedMissionName(mission.name);
-                        }}
+                        onClick={() => selectMission(mission.name)}
                       >
                         {isActive ? "Selected" : "Use Mission"}
                       </Button>

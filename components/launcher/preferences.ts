@@ -11,14 +11,9 @@ export type LauncherPreferences = {
   headingMode: FontMode;
   headingSansFont: SansFontId;
   headingMonoFont: MonoFontId;
-  backgroundEffects: boolean;
-  reduceMotion: boolean;
-  compactSidebar: boolean;
-  rememberLastView: boolean;
 };
 
 export const launcherPreferencesStorageKey = "dayz-tools.launcher-preferences";
-export const launcherLastViewStorageKey = "dayz-tools.last-view";
 
 export const defaultLauncherPreferences: LauncherPreferences = {
   themeMode: "dark",
@@ -28,10 +23,6 @@ export const defaultLauncherPreferences: LauncherPreferences = {
   headingMode: "mono",
   headingSansFont: "geist",
   headingMonoFont: "jetbrains-mono",
-  backgroundEffects: true,
-  reduceMotion: false,
-  compactSidebar: false,
-  rememberLastView: true,
 };
 
 export const sansFontOptions: { value: SansFontId; label: string }[] = [

@@ -22,7 +22,7 @@ func main() {
 		Height:           1020,
 		MinWidth:         1240,
 		MinHeight:        820,
-		Frameless:        true,
+		Frameless:        false,
 		DisableResize:    false,
 		BackgroundColour: &options.RGBA{R: 7, G: 17, B: 31, A: 1},
 		AssetServer: &assetserver.Options{
@@ -36,9 +36,7 @@ func main() {
 		Debug: options.Debug{
 			OpenInspectorOnStartup: true,
 		},
-		Windows: &windowsoptions.Options{
-			DisableFramelessWindowDecorations: false,
-		},
+		Windows: &windowsoptions.Options{},
 	})
 	if err != nil {
 		log.Fatal(err)

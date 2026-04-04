@@ -48,6 +48,8 @@ export function DayzServerWorkspace(props: DayzServerWorkspaceProps) {
             onLoadModPreset={props.onLoadModPreset}
             onDeleteModPreset={props.onDeleteModPreset}
             onToggleModEnabled={props.onToggleModEnabled}
+            onRemoveModFromList={props.onRemoveModFromList}
+            onDeleteModFiles={props.onDeleteModFiles}
             onOpenModDirectory={props.onOpenModDirectory}
             onRefreshMods={props.onRefreshMods}
             onImportLocalMod={props.onImportLocalMod}

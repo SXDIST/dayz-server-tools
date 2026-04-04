@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useDeferredValue, useEffect, useMemo, useState } from "react";
-import { FolderOpen, Layers3, Search, ShieldCheck, ShieldOff, Wrench } from "lucide-react";
+import { FolderOpen, Layers3, Search, ShieldCheck, ShieldOff, Trash2, TriangleAlert, Wrench } from "lucide-react";
 
 import { SelectField } from "@/components/dayz-server/form-controls";
 import { Section } from "@/components/dayz-server/workspace-shared";
@@ -10,6 +10,14 @@ import { formatBytes, formatTimestamp, getModSignatureLabel, getModSourceLabel }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { VirtualList } from "@/components/ui/virtual-list";
 import {
@@ -36,6 +44,8 @@ type ModsPageProps = Pick<
   | "onLoadModPreset"
   | "onDeleteModPreset"
   | "onToggleModEnabled"
+  | "onRemoveModFromList"
+  | "onDeleteModFiles"
   | "onOpenModDirectory"
   | "onRefreshMods"
   | "onImportLocalMod"
@@ -91,7 +101,9 @@ function filterModsByScope(
       return localMods;
     case "all":
     default:
-      return [...enabledMods, ...workshopMods.filter((mod) => !mod.enabled), ...localMods.filter((mod) => !mod.enabled)];
+      return [...enabledMods, ...workshopMods.filter((mod) => !mod.enabled), ...localMods.filter((mod) => !mod.enabled)].toSorted(
+        (left, right) => left.displayName.localeCompare(right.displayName, "ru", { sensitivity: "base" }),
+      );
   }
 }
 
@@ -124,41 +136,6 @@ function ModsPageSkeleton() {
         </div>
       </div>
     </Section>
-  );
-}
-
-function ModsToolbar({
-  modsSearch,
-  setModsSearch,
-  onRefreshMods,
-  onImportLocalMod,
-}: Pick<ModsPageProps, "modsSearch" | "setModsSearch" | "onRefreshMods" | "onImportLocalMod">) {
-  return (
-    <WorkspacePanel
-      title="Library Controls"
-      description="Search the catalog, rescan detected mods or import a local folder."
-      contentClassName="space-y-4"
-    >
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={modsSearch}
-            onChange={(event) => setModsSearch(event.target.value)}
-            placeholder="Search mods, authors, versions, ids and paths"
-            className="pl-9"
-          />
-        </div>
-        <Button variant="default" onClick={() => void onRefreshMods()}>
-          <Layers3 className="size-4" />
-          Refresh Mods
-        </Button>
-        <Button variant="outline" onClick={() => void onImportLocalMod()}>
-          <FolderOpen className="size-4" />
-          Add Local Mod
-        </Button>
-      </div>
-    </WorkspacePanel>
   );
 }
 
@@ -198,12 +175,14 @@ const ModsListRow = memo(function ModsListRow({
   selected,
   onSelect,
   onToggleModEnabled,
+  onRequestDelete,
   onOpenModDirectory,
 }: {
   mod: DayzParsedMod;
   selected: boolean;
   onSelect: (modId: string) => void;
   onToggleModEnabled: (modId: string) => void;
+  onRequestDelete: (mod: DayzParsedMod) => void;
   onOpenModDirectory: (modPath: string) => Promise<void>;
 }) {
   return (
@@ -244,16 +223,30 @@ const ModsListRow = memo(function ModsListRow({
           <p className="mt-1 truncate text-xs uppercase tracking-[0.16em] text-muted-foreground">{mod.path}</p>
         </button>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={(event) => {
-            event.stopPropagation();
-            void onOpenModDirectory(mod.path);
-          }}
-        >
-          Open Folder
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(event) => {
+              event.stopPropagation();
+              void onOpenModDirectory(mod.path);
+            }}
+          >
+            Open Folder
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={(event) => {
+              event.stopPropagation();
+              onRequestDelete(mod);
+            }}
+          >
+            <Trash2 className="size-4" />
+            Delete
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -264,12 +257,14 @@ function ModsList({
   selectedModId,
   onSelect,
   onToggleModEnabled,
+  onRequestDelete,
   onOpenModDirectory,
 }: {
   mods: DayzParsedMod[];
   selectedModId: string;
   onSelect: (modId: string) => void;
   onToggleModEnabled: (modId: string) => void;
+  onRequestDelete: (mod: DayzParsedMod) => void;
   onOpenModDirectory: (modPath: string) => Promise<void>;
 }) {
   if (mods.length === 0) {
@@ -295,6 +290,7 @@ function ModsList({
               selected={selectedModId === mod.id}
               onSelect={onSelect}
               onToggleModEnabled={onToggleModEnabled}
+              onRequestDelete={onRequestDelete}
               onOpenModDirectory={onOpenModDirectory}
             />
           ))}
@@ -316,6 +312,7 @@ function ModsList({
           selected={selectedModId === mod.id}
           onSelect={onSelect}
           onToggleModEnabled={onToggleModEnabled}
+          onRequestDelete={onRequestDelete}
           onOpenModDirectory={onOpenModDirectory}
         />
       )}
@@ -412,10 +409,12 @@ function ModPresetPanel({
 function ModInspector({
   mod,
   onToggleModEnabled,
+  onRequestDelete,
   onOpenModDirectory,
 }: {
   mod: DayzParsedMod | null;
   onToggleModEnabled: (modId: string) => void;
+  onRequestDelete: (mod: DayzParsedMod) => void;
   onOpenModDirectory: (modPath: string) => Promise<void>;
 }) {
   if (!mod) {
@@ -454,6 +453,14 @@ function ModInspector({
             <Button variant="outline" onClick={() => void onOpenModDirectory(mod.path)}>
               Open Folder
             </Button>
+            <Button
+              variant="outline"
+              className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => onRequestDelete(mod)}
+            >
+              <Trash2 className="size-4" />
+              Delete Mod
+            </Button>
           </div>
         </div>
 
@@ -491,6 +498,90 @@ function ModInspector({
   );
 }
 
+function DeleteModDialog({
+  mod,
+  open,
+  pending,
+  onOpenChange,
+  onRemoveFromList,
+  onDeleteFiles,
+}: {
+  mod: DayzParsedMod | null;
+  open: boolean;
+  pending: boolean;
+  onOpenChange: (open: boolean) => void;
+  onRemoveFromList: (modId: string) => void;
+  onDeleteFiles: (mod: DayzParsedMod) => Promise<void>;
+}) {
+  const isWorkshop = mod?.source === "Workshop";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent showCloseButton={!pending}>
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+              <TriangleAlert className="size-5" />
+            </div>
+            <div className="space-y-1">
+              <DialogTitle>Delete mod</DialogTitle>
+              <DialogDescription>
+                {mod
+                  ? `You're about to remove ${mod.displayName}. This action affects the full mod folder, not only addons, keys or PBO files.`
+                  : "Choose how to remove this mod."}
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+
+        {mod ? (
+          <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
+            {isWorkshop ? (
+              <p>
+                Workshop mod deletion removes the entire Workshop item folder from disk and then opens the Steam item page so you can finish unsubscribing.
+              </p>
+            ) : (
+              <p>
+                For local mods you can either remove the entry from the current list only, or permanently delete the entire mod folder from disk.
+              </p>
+            )}
+          </div>
+        ) : null}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+            Cancel
+          </Button>
+          {mod && !isWorkshop ? (
+            <Button
+              variant="outline"
+              onClick={() => {
+                onRemoveFromList(mod.id);
+                onOpenChange(false);
+              }}
+              disabled={pending}
+            >
+              Remove From List
+            </Button>
+          ) : null}
+          {mod ? (
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                await onDeleteFiles(mod);
+                onOpenChange(false);
+              }}
+              disabled={pending}
+            >
+              {isWorkshop ? "Delete From PC" : "Delete Files"}
+            </Button>
+          ) : null}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 const ModsPageContent = memo(function ModsPageContent({
   modsSearch,
   setModsSearch,
@@ -506,6 +597,8 @@ const ModsPageContent = memo(function ModsPageContent({
   onLoadModPreset,
   onDeleteModPreset,
   onToggleModEnabled,
+  onRemoveModFromList,
+  onDeleteModFiles,
   onOpenModDirectory,
   onRefreshMods,
   onImportLocalMod,
@@ -516,6 +609,8 @@ const ModsPageContent = memo(function ModsPageContent({
 
   const [activeScope, setActiveScope] = useState<ModFilterScope>("all");
   const [selectedModId, setSelectedModId] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<DayzParsedMod | null>(null);
+  const [isDeletePending, setIsDeletePending] = useState(false);
 
   const scopedMods = useMemo(
     () => filterModsByScope(activeScope, deferredWorkshopMods, deferredLocalMods, deferredEnabledMods),
@@ -554,13 +649,6 @@ const ModsPageContent = memo(function ModsPageContent({
       description="One focused workspace for discovery, enablement and inspection. Details live in the inspector, so the list stays fast and readable."
     >
       <div className="space-y-4">
-        <ModsToolbar
-          modsSearch={modsSearch}
-          setModsSearch={setModsSearch}
-          onRefreshMods={onRefreshMods}
-          onImportLocalMod={onImportLocalMod}
-        />
-
         <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_380px]">
           <div className="space-y-4">
             <ModPresetPanel
@@ -578,9 +666,31 @@ const ModsPageContent = memo(function ModsPageContent({
             <WorkspacePanel
               title={getScopeLabel(activeScope)}
               description="Use filters to move between all detected mods, enabled set, Workshop items and local folders without switching scroll regions."
+              actions={
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="default" onClick={() => void onRefreshMods()}>
+                    <Layers3 className="size-4" />
+                    Refresh Mods
+                  </Button>
+                  <Button variant="outline" onClick={() => void onImportLocalMod()}>
+                    <FolderOpen className="size-4" />
+                    Add Local Mod
+                  </Button>
+                </div>
+              }
               contentClassName="space-y-4"
             >
               <ModsFilterTabs activeScope={activeScope} setActiveScope={setActiveScope} counts={counts} />
+
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={modsSearch}
+                  onChange={(event) => setModsSearch(event.target.value)}
+                  placeholder="Search mods, authors, versions, ids and paths"
+                  className="pl-9"
+                />
+              </div>
 
               <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
                 <span>{counts[activeScope]} results</span>
@@ -597,6 +707,7 @@ const ModsPageContent = memo(function ModsPageContent({
                 selectedModId={selectedModId}
                 onSelect={setSelectedModId}
                 onToggleModEnabled={onToggleModEnabled}
+                onRequestDelete={setDeleteTarget}
                 onOpenModDirectory={onOpenModDirectory}
               />
             </WorkspacePanel>
@@ -605,9 +716,30 @@ const ModsPageContent = memo(function ModsPageContent({
           <ModInspector
             mod={selectedMod}
             onToggleModEnabled={onToggleModEnabled}
+            onRequestDelete={setDeleteTarget}
             onOpenModDirectory={onOpenModDirectory}
           />
         </div>
+
+        <DeleteModDialog
+          mod={deleteTarget}
+          open={deleteTarget !== null}
+          pending={isDeletePending}
+          onOpenChange={(open) => {
+            if (!open) {
+              setDeleteTarget(null);
+            }
+          }}
+          onRemoveFromList={onRemoveModFromList}
+          onDeleteFiles={async (mod) => {
+            setIsDeletePending(true);
+            try {
+              await onDeleteModFiles(mod);
+            } finally {
+              setIsDeletePending(false);
+            }
+          }}
+        />
       </div>
     </Section>
   );

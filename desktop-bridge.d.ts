@@ -232,6 +232,7 @@ declare global {
     version: string;
     author: string;
     workshopId?: string;
+    workshopRoot?: string;
     createdAt: string;
     updatedAt: string;
     sizeBytes: number;
@@ -242,6 +243,7 @@ declare global {
 
   interface DayzCrashArtifact {
     id: string;
+    source: "server" | "client";
     kind: "rpt" | "script" | "crash" | "mdmp";
     name: string;
     path: string;
@@ -249,17 +251,10 @@ declare global {
     modifiedAt: string;
   }
 
-  interface DayzCrashAnalysis {
-    severity: "info" | "warning" | "error";
-    summary: string;
-    probableCause: string;
-    exceptionCode: string;
-    signals: string[];
-    recommendations: string[];
-  }
-
-  interface DayzCrashSnapshot {
-    profilesPath: string;
+  interface DayzCrashSourceSnapshot {
+    source: "server" | "client";
+    label: string;
+    path: string;
     artifacts: DayzCrashArtifact[];
     latest: {
       rpt: DayzCrashArtifact | null;
@@ -275,10 +270,80 @@ declare global {
     analysis: DayzCrashAnalysis;
   }
 
+  interface DayzCrashAnalysis {
+    severity: "info" | "warning" | "error";
+    summary: string;
+    probableCause: string;
+    exceptionCode: string;
+    signals: string[];
+    recommendations: string[];
+  }
+
+  interface DayzCrashSnapshot {
+    profilesPath: string;
+    clientLogsPath: string;
+    artifacts: DayzCrashArtifact[];
+    latest: {
+      rpt: DayzCrashArtifact | null;
+      script: DayzCrashArtifact | null;
+      crash: DayzCrashArtifact | null;
+      mdmp: DayzCrashArtifact | null;
+    };
+    excerpts: {
+      rpt: string[];
+      script: string[];
+      crash: string[];
+    };
+    analysis: DayzCrashAnalysis;
+    sources: {
+      server: DayzCrashSourceSnapshot;
+      client: DayzCrashSourceSnapshot;
+    };
+  }
+
+  interface DayzCrashScanRequest {
+    profilesPath?: string;
+    clientLogsPath?: string;
+  }
+
+  interface DayzDeleteCrashArtifactsRequest {
+    profilesPath?: string;
+    clientLogsPath?: string;
+    target: "server" | "client" | "all";
+  }
+
+  interface DayzDeleteCrashArtifactsResult {
+    target: "server" | "client" | "all";
+    deletedCount: number;
+    deletedPaths: string[];
+    serverDeletedCount: number;
+    clientDeletedCount: number;
+    skippedCount: number;
+    skippedPaths: string[];
+  }
+
   interface DayzModPreset {
     id: string;
     name: string;
     enabledModPaths: string[];
+  }
+
+  interface DayzDeleteModRequest {
+    path: string;
+    source: string;
+    workshopId?: string;
+    workshopRoot?: string;
+    mode: "remove-from-list" | "delete-files";
+  }
+
+  interface DayzDeleteModResult {
+    source: string;
+    path: string;
+    deleteTarget: string | null;
+    removedFiles: boolean;
+    removedFromList: boolean;
+    workshopUnsubscribeOpened: boolean;
+    workshopUnsubscribeTarget: string | null;
   }
 
   interface DayzWorkspaceState {
@@ -327,7 +392,9 @@ declare global {
       scanMods: (serverRoot: string) => Promise<DayzParsedMod[]>;
       scanWorkshopMods: (serverRoot: string) => Promise<DayzParsedMod[]>;
       inspectModFolder: (modRoot: string) => Promise<DayzParsedMod>;
-      scanCrashTools: (profilesPath: string) => Promise<DayzCrashSnapshot>;
+      deleteMod: (request: DayzDeleteModRequest) => Promise<DayzDeleteModResult>;
+      scanCrashTools: (request: DayzCrashScanRequest) => Promise<DayzCrashSnapshot>;
+      deleteCrashArtifacts: (request: DayzDeleteCrashArtifactsRequest) => Promise<DayzDeleteCrashArtifactsResult>;
       openPath: (targetPath: string) => Promise<void>;
       launchClient: (options: DayzClientLaunchOptions) => Promise<DayzClientLaunchResult>;
       stopClient: () => Promise<DayzClientRuntime>;
@@ -359,12 +426,7 @@ declare global {
           headingMode?: "sans" | "mono";
           headingSansFont?: "inter" | "geist" | "noto-sans" | "roboto";
           headingMonoFont?: "jetbrains-mono" | "geist-mono";
-          backgroundEffects?: boolean;
-          reduceMotion?: boolean;
-          compactSidebar?: boolean;
-          rememberLastView?: boolean;
         };
-        lastView?: string;
       };
     }
   }

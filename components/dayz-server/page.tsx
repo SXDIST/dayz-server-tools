@@ -352,6 +352,8 @@ export function DayzServerPage() {
       onLoadModPreset={mods.loadSelectedModPreset}
       onDeleteModPreset={mods.deleteSelectedModPreset}
       onToggleModEnabled={mods.toggleModEnabled}
+      onRemoveModFromList={mods.removeModFromList}
+      onDeleteModFiles={mods.deleteModFiles}
       onOpenModDirectory={handleOpenModDirectory}
       onRefreshMods={async () => {
         const targetRoot = mods.getRefreshTargetRoot(workspace.pathValues);

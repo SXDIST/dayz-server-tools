@@ -54,6 +54,48 @@ export function useDayzMods({ dayzApi, appendPreviewLog, preferredModTokensRef }
     });
   }, []);
 
+  const cleanupDeletedMod = useCallback((modId: string, modPath: string, deleteTargetPath?: string | null) => {
+    const normalizedTargetPath = modPath.toLowerCase();
+    const normalizedDeleteTarget = String(deleteTargetPath ?? "").toLowerCase();
+    const removedPathSet = new Set(
+      serverMods
+        .filter((item) => {
+          if (item.id === modId) {
+            return true;
+          }
+
+          if (!normalizedDeleteTarget) {
+            return false;
+          }
+
+          const itemPath = item.path.toLowerCase();
+          const workshopRoot = String(item.workshopRoot ?? "").toLowerCase();
+
+          return (
+            itemPath === normalizedDeleteTarget ||
+            workshopRoot === normalizedDeleteTarget ||
+            itemPath.startsWith(`${normalizedDeleteTarget}\\`) ||
+            itemPath.startsWith(`${normalizedDeleteTarget}/`)
+          );
+        })
+        .map((item) => item.path.toLowerCase()),
+    );
+
+    if (removedPathSet.size === 0) {
+      removedPathSet.add(normalizedTargetPath);
+    }
+
+    startTransition(() => {
+      setServerMods((current) => current.filter((item) => !removedPathSet.has(item.path.toLowerCase())));
+      setModPresets((current) =>
+        current.map((preset) => ({
+          ...preset,
+          enabledModPaths: preset.enabledModPaths.filter((path) => !removedPathSet.has(path.toLowerCase())),
+        })),
+      );
+    });
+  }, [serverMods]);
+
   const scanServerMods = useCallback(
     async (serverRoot: string) => {
       if (!serverRoot) {
@@ -162,6 +204,61 @@ export function useDayzMods({ dayzApi, appendPreviewLog, preferredModTokensRef }
       );
     }
   }, [appendPreviewLog, dayzApi, preferredModTokensRef]);
+
+  const removeModFromList = useCallback(
+    (modId: string) => {
+      const targetMod = serverMods.find((mod) => mod.id === modId);
+
+      if (!targetMod) {
+        appendPreviewLog("[mods] Select a mod to remove first.", "stderr");
+        return;
+      }
+
+      cleanupDeletedMod(targetMod.id, targetMod.path);
+      appendPreviewLog(`[mods] Removed ${targetMod.displayName} from the current list.`);
+    },
+    [appendPreviewLog, cleanupDeletedMod, serverMods],
+  );
+
+  const deleteModFiles = useCallback(
+    async (mod: DayzParsedMod) => {
+      if (!dayzApi) {
+        appendPreviewLog("[mods] Mod deletion works in the desktop build.");
+        return;
+      }
+
+      try {
+        const result = await dayzApi.deleteMod({
+          path: mod.path,
+          source: mod.source,
+          workshopId: mod.workshopId,
+          workshopRoot: mod.workshopRoot,
+          mode: "delete-files",
+        });
+
+        cleanupDeletedMod(mod.id, mod.path, result.deleteTarget);
+
+        if (result.source === "Workshop") {
+          appendPreviewLog(`[mods] Deleted Workshop files for ${mod.displayName}.`);
+          appendPreviewLog(
+            result.workshopUnsubscribeOpened
+              ? `[mods] Opened Steam unsubscribe target for Workshop item ${mod.workshopId ?? "unknown"}.`
+              : `[mods] Deleted Workshop files for ${mod.displayName}, but could not open the Steam unsubscribe target.`,
+            result.workshopUnsubscribeOpened ? "info" : "stderr",
+          );
+          return;
+        }
+
+        appendPreviewLog(`[mods] Deleted mod folder ${result.deleteTarget ?? mod.path}.`);
+      } catch (error) {
+        appendPreviewLog(
+          `[mods] ${error instanceof Error ? error.message : "Failed to delete mod files."}`,
+          "stderr",
+        );
+      }
+    },
+    [appendPreviewLog, cleanupDeletedMod, dayzApi],
+  );
 
   const applyImportedLocalModPaths = useCallback(
     (mods: DayzParsedMod[], enabledPaths: string[]) => {
@@ -287,6 +384,8 @@ export function useDayzMods({ dayzApi, appendPreviewLog, preferredModTokensRef }
     modsSearch,
     setModsSearch,
     toggleModEnabled,
+    removeModFromList,
+    deleteModFiles,
     scanServerMods,
     scanWorkshopMods,
     importLocalMod,

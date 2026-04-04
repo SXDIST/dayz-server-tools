@@ -4,12 +4,15 @@ import dynamic from "next/dynamic";
 import { useState } from "react";
 
 import { AppHeader } from "@/components/launcher/app-header";
-import { AppSidebar } from "@/components/launcher/app-sidebar";
-import type { ModuleId } from "@/components/launcher/constants";
-import { PlaceholderModule } from "@/components/launcher/placeholder-module";
-import { launcherLastViewStorageKey } from "@/components/launcher/preferences";
 import { useLauncherPreferences } from "@/components/launcher/use-launcher-preferences";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 function ModuleLoadingCard({
   title,
@@ -61,87 +64,64 @@ const SettingsPage = dynamic(
   },
 );
 
-const ImageToPaaPage = dynamic(
-  () => import("@/components/image-to-paa/page").then((module) => module.ImageToPaaPage),
-  {
-    loading: () => (
-      <ModuleLoadingCard
-        title="Loading Image To PAA"
-        description="Preparing the texture conversion workspace."
-      />
-    ),
-  },
-);
-
 const CrashToolsPage = dynamic(
   () => import("@/components/crash-tools/page").then((module) => module.CrashToolsPage),
   {
     loading: () => (
       <ModuleLoadingCard
         title="Loading Crash Tools"
-        description="Preparing crash diagnostics and recent artifact views."
+        description="Restoring crash diagnostics and recent artifact views."
       />
     ),
   },
 );
 
 export function LauncherShell() {
-  const {
-    preferences,
-    setPreferences,
-    lastView,
-    setLastView,
-  } = useLauncherPreferences();
-  const [activeView, setActiveView] = useState<ModuleId | "settings">(
-    preferences.rememberLastView ? (lastView as ModuleId | "settings") : "dayz-server",
-  );
-
-  const handleSelectView = (view: ModuleId | "settings") => {
-    setActiveView(view);
-    setLastView(view);
-
-    if (!preferences.rememberLastView && typeof window !== "undefined") {
-      window.localStorage.removeItem(launcherLastViewStorageKey);
-    }
-  };
-
-  const renderContent = () => {
-    switch (activeView) {
-      case "dayz-server":
-        return <DayzServerPage />;
-      case "settings":
-        return <SettingsPage preferences={preferences} setPreferences={setPreferences} />;
-      case "image-to-paa":
-        return <ImageToPaaPage />;
-      case "crash-tools":
-        return <CrashToolsPage />;
-      case "rvmat-editor":
-        return <PlaceholderModule title="RVMAT Editor" description="Future material editor workspace." />;
-      case "model-tools":
-        return <PlaceholderModule title="Model Tools" description="Future addon and asset validation workspace." />;
-    }
-  };
+  const { preferences, setPreferences } = useLauncherPreferences();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [crashToolsOpen, setCrashToolsOpen] = useState(false);
 
   return (
     <main className="launcher-shell relative h-screen overflow-hidden bg-background text-foreground">
       <div className="launcher-shell__frame relative z-10 flex h-full flex-col overflow-hidden">
         <AppHeader
-          activeView={activeView}
-          onSelectView={handleSelectView}
+          onOpenCrashTools={() => setCrashToolsOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
-        <div className="launcher-shell__body mt-[5.5rem] min-h-0 flex-1 overflow-hidden px-3 pb-3">
-          <div className="grid h-full min-h-0 gap-3 xl:grid-cols-[280px_minmax(0,1fr)]">
-            <AppSidebar
-              activeView={activeView}
-              onSelectModule={handleSelectView}
-              compactSidebar={preferences.compactSidebar}
-            />
-            <section className="launcher-shell__content app-soft-scroll app-scroll-fade min-h-0 overflow-y-auto rounded-xl border bg-background p-3 sm:p-4">
-              {renderContent()}
-            </section>
-          </div>
+        <div className="launcher-shell__body min-h-0 flex-1 overflow-hidden px-3 pb-3 pt-3">
+          <section className="launcher-shell__content app-soft-scroll app-scroll-fade min-h-0 h-full overflow-y-auto rounded-xl bg-background/0 p-1 sm:p-2">
+            <DayzServerPage />
+          </section>
         </div>
       </div>
+
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="h-[88vh] max-h-[980px] w-[calc(100vw-3rem)] !max-w-[1280px] overflow-hidden rounded-2xl p-0">
+          <DialogHeader className="border-b px-6 py-4">
+            <DialogTitle>Settings</DialogTitle>
+            <DialogDescription>
+              Launcher-wide preferences for theme and typography.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="app-soft-scroll h-[calc(88vh-5.5rem)] max-h-[calc(980px-5.5rem)] overflow-y-auto px-6 py-5">
+            <SettingsPage preferences={preferences} setPreferences={setPreferences} />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={crashToolsOpen} onOpenChange={setCrashToolsOpen}>
+        <DialogContent className="h-[92vh] max-h-[1100px] w-[calc(100vw-3rem)] !max-w-[1680px] overflow-hidden rounded-2xl p-0">
+          <DialogHeader className="border-b px-6 py-4">
+            <DialogTitle>Crash Tools</DialogTitle>
+            <DialogDescription>
+              Combined server and client crash diagnostics with log cleanup tools.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="app-soft-scroll h-[calc(92vh-5.5rem)] max-h-[calc(1100px-5.5rem)] overflow-y-auto px-6 py-5">
+            <CrashToolsPage />
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
