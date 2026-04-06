@@ -75,7 +75,6 @@ export function useDayzWorkspace({
     resolution: string;
   }>(defaultClientSettings);
   const [workspaceLoaded, setWorkspaceLoaded] = useState(!isDesktop || !dayzApi);
-  const didBootstrapDayzRef = useRef(false);
   const pathValuesRef = useRef(pathValues);
   const clientPathRef = useRef(clientPath);
 
@@ -258,15 +257,21 @@ export function useDayzWorkspace({
           return;
         }
 
-        if (state.paths && Object.keys(state.paths).length > 0) {
-          setPathValues((current) => ({ ...current, ...state.paths }));
-        }
+        const restoredPaths = {
+          ...emptyPathValues,
+          ...(state.paths ?? {}),
+        } as Record<string, string>;
+
+        pathValuesRef.current = restoredPaths;
+        setPathValues(restoredPaths);
 
         if (state.clientPath) {
+          clientPathRef.current = state.clientPath;
           setClientPath(state.clientPath);
         } else {
           const detectedClientPath = await dayzApi.detectClientExecutable().catch(() => null);
           if (mounted && detectedClientPath) {
+            clientPathRef.current = detectedClientPath;
             setClientPath(detectedClientPath);
           }
         }
@@ -328,6 +333,41 @@ export function useDayzWorkspace({
 
           applyImportedLocalModPaths(importedMods, state.enabledModPaths ?? []);
         }
+
+        const restoredServerRoot = restoredPaths[DAYZ_SERVER_ROOT_LABEL] ?? "";
+        const restoredServerModsRoot = resolveServerModsPath(restoredPaths, restoredServerRoot);
+
+        if (restoredServerRoot) {
+          try {
+            const detected = await dayzApi.detectServerPaths(restoredServerRoot);
+
+            if (!mounted) {
+              return;
+            }
+
+            const found = await applyDetectedPaths(detected);
+
+            if (found) {
+              await Promise.all([
+                scanServerMods(resolveServerModsPath(pathValuesRef.current, detected.serverMods || detected.serverRoot)),
+                scanWorkshopMods(detected.serverRoot),
+              ]);
+              return;
+            }
+          } catch (error) {
+            appendPreviewLog(
+              `[launcher] ${error instanceof Error ? error.message : "Failed to restore DayZ Server paths."}`,
+              "stderr",
+            );
+          }
+        }
+
+        if (restoredServerModsRoot) {
+          await scanServerMods(restoredServerModsRoot);
+          return;
+        }
+
+        await handleAutoScanServer();
       })
       .finally(() => {
         if (mounted) {
@@ -338,7 +378,19 @@ export function useDayzWorkspace({
     return () => {
       mounted = false;
     };
-  }, [applyImportedLocalModPaths, dayzApi, hydrateModPresets, isDesktop]);
+  }, [
+    appendPreviewLog,
+    applyDetectedPaths,
+    applyImportedLocalModPaths,
+    dayzApi,
+    emptyPathValues,
+    handleAutoScanServer,
+    hydrateModPresets,
+    isDesktop,
+    resolveServerModsPath,
+    scanServerMods,
+    scanWorkshopMods,
+  ]);
 
   useEffect(() => {
     if (!isDesktop || !dayzApi || !workspaceLoaded) {
@@ -379,47 +431,6 @@ export function useDayzWorkspace({
     selectedInitLoadoutPresetId,
     serverConfigValues,
     serverMods,
-    workspaceLoaded,
-  ]);
-
-  useEffect(() => {
-    if (!isDesktop || !dayzApi || !workspaceLoaded || didBootstrapDayzRef.current) {
-      return;
-    }
-
-    didBootstrapDayzRef.current = true;
-
-    if (pathValues[DAYZ_SERVER_ROOT_LABEL]) {
-      void dayzApi
-        .detectServerPaths(pathValues[DAYZ_SERVER_ROOT_LABEL] ?? "")
-        .then(async (detected) => {
-          const found = await applyDetectedPaths(detected);
-          if (found) {
-            await Promise.all([
-              scanServerMods(resolveServerModsPath(pathValuesRef.current, detected.serverMods || detected.serverRoot)),
-              scanWorkshopMods(detected.serverRoot),
-            ]);
-          }
-        })
-        .catch(() => undefined);
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      void handleAutoScanServer();
-    }, 0);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [
-    applyDetectedPaths,
-    dayzApi,
-    handleAutoScanServer,
-    isDesktop,
-    resolveServerModsPath,
-    scanServerMods,
-    scanWorkshopMods,
     workspaceLoaded,
   ]);
 

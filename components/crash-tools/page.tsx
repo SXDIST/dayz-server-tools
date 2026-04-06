@@ -36,6 +36,7 @@ import {
   WorkspacePageHeader,
   WorkspacePanel,
 } from "@/components/workspace/workspace-kit";
+import { useDesktopBridge } from "@/components/use-desktop-bridge";
 import { cn } from "@/lib/utils";
 
 type CrashSource = "server" | "client";
@@ -296,9 +297,7 @@ function buildFallbackSnapshot(profilesPath: string, clientLogsPath: string, mes
 }
 
 export function CrashToolsPage() {
-  const desktopBridge = typeof window !== "undefined" ? window.desktopBridge : undefined;
-  const dayzApi = desktopBridge?.dayz;
-  const isDesktop = desktopBridge?.isElectron === true;
+  const { dayzApi, isDesktop } = useDesktopBridge();
   const [profilesPath, setProfilesPath] = useState("");
   const [clientLogsPath, setClientLogsPath] = useState("");
   const [snapshot, setSnapshot] = useState<DayzCrashSnapshot | null>(null);

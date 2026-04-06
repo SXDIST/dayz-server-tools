@@ -2,17 +2,16 @@
 
 import { startTransition, useCallback, useMemo, useRef, useState } from "react";
 
-import type { ServerTab } from "@/components/dayz-server/constants";
+import { DAYZ_SERVER_ROOT_LABEL, SERVER_MODS_LABEL, type ServerTab } from "@/components/dayz-server/constants";
 import { DayzServerWorkspace } from "@/components/dayz-server/workspace";
 import { useDayzInitGenerator } from "@/components/dayz-server/hooks/use-dayz-init-generator";
 import { useDayzMods } from "@/components/dayz-server/hooks/use-dayz-mods";
 import { useDayzRuntime } from "@/components/dayz-server/hooks/use-dayz-runtime";
 import { useDayzWorkspace } from "@/components/dayz-server/hooks/use-dayz-workspace";
+import { useDesktopBridge } from "@/components/use-desktop-bridge";
 
 export function DayzServerPage() {
-  const desktopBridge = typeof window !== "undefined" ? window.desktopBridge : undefined;
-  const dayzApi = desktopBridge?.dayz;
-  const isDesktop = desktopBridge?.isElectron === true;
+  const { dayzApi, isDesktop } = useDesktopBridge();
   const [serverTab, setServerTab] = useState<ServerTab>("overview");
 
   const runtime = useDayzRuntime(dayzApi, isDesktop);
@@ -356,8 +355,18 @@ export function DayzServerPage() {
       onDeleteModFiles={mods.deleteModFiles}
       onOpenModDirectory={handleOpenModDirectory}
       onRefreshMods={async () => {
-        const targetRoot = mods.getRefreshTargetRoot(workspace.pathValues);
-        await Promise.all([mods.scanServerMods(targetRoot), mods.scanWorkshopMods(targetRoot)]);
+        const serverRoot = workspace.pathValues[DAYZ_SERVER_ROOT_LABEL] ?? "";
+        const serverModsRoot = workspace.pathValues[SERVER_MODS_LABEL] || serverRoot;
+
+        if (!serverRoot && !serverModsRoot) {
+          await workspace.handleAutoScanServer();
+          return;
+        }
+
+        await Promise.all([
+          mods.scanServerMods(serverModsRoot),
+          serverRoot ? mods.scanWorkshopMods(serverRoot) : Promise.resolve(),
+        ]);
       }}
       onImportLocalMod={mods.importLocalMod}
       serverConfigValues={workspace.serverConfigValues}

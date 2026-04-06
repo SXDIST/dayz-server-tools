@@ -2,32 +2,9 @@
 
 import { startTransition, useCallback, useDeferredValue, useMemo, useState, type MutableRefObject } from "react";
 
-import { DAYZ_SERVER_ROOT_LABEL, SERVER_MODS_LABEL, fallbackMods } from "@/components/dayz-server/constants";
+import { DAYZ_SERVER_ROOT_LABEL, SERVER_MODS_LABEL } from "@/components/dayz-server/constants";
 import { applyEnabledTokensToMods, matchesModSearch } from "@/components/dayz-server/utils";
 import type { DayzServerModPreset } from "@/components/dayz-server/workspace-types";
-
-function createFallbackMods(): DayzParsedMod[] {
-  return fallbackMods.map((mod, index) => ({
-    id: `fallback-mod-${index}`,
-    name: mod.name,
-    displayName: mod.name,
-    source: mod.source,
-    state: mod.state,
-    enabled: mod.enabled,
-    launchMode: "mod",
-    path: mod.name,
-    hasAddonsDir: true,
-    hasKeysDir: false,
-    version: "",
-    author: "",
-    createdAt: "",
-    updatedAt: "",
-    sizeBytes: 0,
-    pboCount: 0,
-    signedPboCount: 0,
-    isFullySigned: false,
-  }));
-}
 
 type UseDayzModsOptions = {
   dayzApi: DesktopBridge["dayz"] | undefined;
@@ -36,7 +13,7 @@ type UseDayzModsOptions = {
 };
 
 export function useDayzMods({ dayzApi, appendPreviewLog, preferredModTokensRef }: UseDayzModsOptions) {
-  const [serverMods, setServerMods] = useState<DayzParsedMod[]>(createFallbackMods);
+  const [serverMods, setServerMods] = useState<DayzParsedMod[]>([]);
   const [modsSearch, setModsSearch] = useState("");
   const [modPresets, setModPresets] = useState<DayzServerModPreset[]>([]);
   const [selectedModPresetId, setSelectedModPresetId] = useState("");

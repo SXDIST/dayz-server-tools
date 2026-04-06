@@ -77,13 +77,10 @@ func (a *App) ensureBackend() error {
 		return errors.New("Node.js executable was not found in PATH")
 	}
 
-	projectRoot, err := os.Getwd()
+	scriptPath, repoRoot, err := resolveBackendScriptPath()
 	if err != nil {
 		return err
 	}
-
-	repoRoot := filepath.Clean(filepath.Join(projectRoot, ".."))
-	scriptPath := filepath.Join(repoRoot, "backend", "node", "dayz-backend.cjs")
 	cmd := exec.Command(nodePath, scriptPath)
 	cmd.Dir = repoRoot
 
@@ -123,6 +120,50 @@ func (a *App) ensureBackend() error {
 	}()
 
 	return nil
+}
+
+func resolveBackendScriptPath() (string, string, error) {
+	const relativeScriptPath = "backend/node/dayz-backend.cjs"
+
+	candidates := make([]string, 0, 8)
+	seen := make(map[string]struct{})
+	addCandidate := func(path string) {
+		cleaned := filepath.Clean(strings.TrimSpace(path))
+		if cleaned == "" || cleaned == "." {
+			return
+		}
+		if _, ok := seen[cleaned]; ok {
+			return
+		}
+		seen[cleaned] = struct{}{}
+		candidates = append(candidates, cleaned)
+	}
+
+	if cwd, err := os.Getwd(); err == nil {
+		addCandidate(cwd)
+		addCandidate(filepath.Join(cwd, "desktop"))
+		addCandidate(filepath.Join(cwd, ".."))
+	}
+
+	if executablePath, err := os.Executable(); err == nil {
+		executableDir := filepath.Dir(executablePath)
+		addCandidate(executableDir)
+		addCandidate(filepath.Join(executableDir, ".."))
+		addCandidate(filepath.Join(executableDir, "..", ".."))
+		addCandidate(filepath.Join(executableDir, "..", "..", ".."))
+	}
+
+	for _, candidate := range candidates {
+		scriptPath := filepath.Join(candidate, relativeScriptPath)
+		if info, err := os.Stat(scriptPath); err == nil && !info.IsDir() {
+			return scriptPath, candidate, nil
+		}
+	}
+
+	return "", "", fmt.Errorf(
+		"could not locate %s from current working directory or executable path",
+		relativeScriptPath,
+	)
 }
 
 func (a *App) stopBackend() {
