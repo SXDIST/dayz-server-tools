@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ComponentType, type ReactNode } from "react";
-import { Check, ChevronDown, ChevronRight, Search } from "lucide-react";
+import { Check, ChevronDown, ChevronRight } from "lucide-react";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import {

@@ -1,10 +1,9 @@
-export type ServerTab = "overview" | "mods" | "config" | "admins" | "missions" | "settings";
+export type ServerTab = "overview" | "mods" | "config" | "missions" | "settings";
 
 export const serverTabs: { id: ServerTab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "mods", label: "Mods" },
   { id: "config", label: "Server.cfg" },
-  { id: "admins", label: "Admin Tools" },
   { id: "missions", label: "Missions" },
   { id: "settings", label: "Settings" },
 ];
@@ -13,11 +12,6 @@ export const fallbackMods = [
   { name: "@CF", source: "Steam Workshop", state: "Installed", enabled: true },
   { name: "@VPPAdminTools", source: "Steam Workshop", state: "Queued", enabled: true },
   { name: "@BuilderItems", source: "Local Folder", state: "Installed", enabled: false },
-];
-
-export const adminTools = [
-  ["VPPAdminTools", "Auto-setup for profiles, permissions and base files."],
-  ["Community Online Tools", "Initialize roles and permissions config files."],
 ];
 
 export const serverPaths = [

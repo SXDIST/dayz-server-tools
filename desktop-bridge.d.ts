@@ -51,6 +51,7 @@ declare global {
   }
 
   interface DayzClientLaunchOptions {
+    serverRoot?: string;
     serverAddress?: string;
     serverPort?: number;
     mods?: string[];
@@ -206,6 +207,8 @@ declare global {
     hasExistingInit: boolean;
     usesManagedBlock: boolean;
     mode: "create" | "full-write" | "managed-update";
+    isMissionWritable: boolean;
+    missionWriteError: string | null;
   }
 
   interface DayzInitApplyResult extends DayzInitPreviewResult {
@@ -370,6 +373,8 @@ declare global {
       minimizeWindow: () => Promise<void>;
       toggleMaximizeWindow: () => Promise<boolean>;
       closeWindow: () => Promise<void>;
+      confirmClose: () => Promise<void>;
+      onBeforeClose: (callback: () => void | Promise<void>) => () => void;
     };
     dayz: {
       pickFolder: (options?: { defaultPath?: string }) => Promise<string | null>;

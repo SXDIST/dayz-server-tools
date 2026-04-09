@@ -20,10 +20,6 @@
 # production
 /build
 /dist-electron
-/desktop/frontend-dist
-/desktop/build/bin
-/desktop/*.exe
-/wailsjs
 
 # misc
 .DS_Store

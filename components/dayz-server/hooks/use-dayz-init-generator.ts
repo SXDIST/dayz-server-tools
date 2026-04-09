@@ -152,6 +152,12 @@ export function useDayzInitGenerator({
       const result = await dayzApi.previewInitGenerator(requestPayload);
       setPreviewResult(result);
       lastPreviewSignatureRef.current = requestSignature;
+      if (!result.isMissionWritable && result.missionWriteError) {
+        appendPreviewLog(
+          `[init] Selected mission is not writable: ${result.missionPath}. ${result.missionWriteError}`,
+          "stderr",
+        );
+      }
     } catch (error) {
       appendPreviewLog(
         `[init] ${error instanceof Error ? error.message : "Failed to generate init.c preview."}`,
@@ -322,7 +328,6 @@ export function useDayzInitGenerator({
     setPresetNameInput,
     selectedPresetId,
     setSelectedPresetId,
-    generatePreview: () => generatePreview(true),
     backupCurrentInit,
     applyGeneratedInit,
     saveCurrentLoadoutPreset,

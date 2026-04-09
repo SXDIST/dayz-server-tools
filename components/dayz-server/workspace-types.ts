@@ -60,7 +60,6 @@ export type DayzServerWorkspaceProps = {
   setInitPresetNameInput: (value: string) => void;
   initSelectedPresetId: string;
   setInitSelectedPresetId: (value: string) => void;
-  onGenerateInitPreview: () => Promise<void>;
   onBackupGeneratedInit: () => Promise<void>;
   onApplyGeneratedInit: () => Promise<void>;
   onSaveInitLoadoutPreset: () => void;

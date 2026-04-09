@@ -1,7 +1,6 @@
 "use client";
 
 import { serverTabs } from "@/components/dayz-server/constants";
-import { AdminToolsPage } from "@/components/dayz-server/pages/admin-tools-page";
 import { ConfigPage } from "@/components/dayz-server/pages/config-page";
 import { DeferredModsPage } from "@/components/dayz-server/pages/mods-page";
 import { MissionsPage } from "@/components/dayz-server/pages/missions-page";
@@ -63,8 +62,6 @@ export function DayzServerWorkspace(props: DayzServerWorkspaceProps) {
             missions={props.missions}
           />
         );
-      case "admins":
-        return <AdminToolsPage />;
       case "missions":
         return (
           <MissionsPage
@@ -84,7 +81,6 @@ export function DayzServerWorkspace(props: DayzServerWorkspaceProps) {
             onSaveInitLoadoutPreset={props.onSaveInitLoadoutPreset}
             onLoadInitLoadoutPreset={props.onLoadInitLoadoutPreset}
             onDeleteInitLoadoutPreset={props.onDeleteInitLoadoutPreset}
-            onGenerateInitPreview={props.onGenerateInitPreview}
             onBackupGeneratedInit={props.onBackupGeneratedInit}
             onApplyGeneratedInit={props.onApplyGeneratedInit}
             initPreviewResult={props.initPreviewResult}

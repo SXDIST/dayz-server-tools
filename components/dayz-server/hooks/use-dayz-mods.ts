@@ -12,6 +12,35 @@ type UseDayzModsOptions = {
   preferredModTokensRef: MutableRefObject<string[]>;
 };
 
+function dedupeMods(mods: DayzParsedMod[]) {
+  const uniqueMods = new Map<string, DayzParsedMod>();
+
+  for (const mod of mods) {
+    const normalizedPath = String(mod.path || "")
+      .trim()
+      .replaceAll("\\", "/")
+      .toLowerCase();
+    const normalizedId = String(mod.id || "")
+      .trim()
+      .toLowerCase();
+    const normalizedWorkshopId = String(mod.workshopId || "")
+      .trim()
+      .toLowerCase();
+    const dedupeKey =
+      normalizedPath ||
+      (normalizedWorkshopId ? `workshop:${normalizedWorkshopId}:${normalizedId}` : normalizedId);
+
+    if (!dedupeKey) {
+      uniqueMods.set(`${mod.id}-${uniqueMods.size}`, mod);
+      continue;
+    }
+
+    uniqueMods.set(dedupeKey, mod);
+  }
+
+  return [...uniqueMods.values()];
+}
+
 export function useDayzMods({ dayzApi, appendPreviewLog, preferredModTokensRef }: UseDayzModsOptions) {
   const [serverMods, setServerMods] = useState<DayzParsedMod[]>([]);
   const [modsSearch, setModsSearch] = useState("");
@@ -92,10 +121,10 @@ export function useDayzMods({ dayzApi, appendPreviewLog, preferredModTokensRef }
           const localImports = current.filter((mod) => mod.source === "Local Import");
           const workshopMods = current.filter((mod) => mod.source === "Workshop");
 
-          return applyEnabledTokensToMods(
+          return dedupeMods(applyEnabledTokensToMods(
             [...scannedMods, ...workshopMods, ...localImports],
             preferredModTokensRef.current,
-          );
+          ));
         });
 
         appendPreviewLog(
@@ -131,10 +160,10 @@ export function useDayzMods({ dayzApi, appendPreviewLog, preferredModTokensRef }
           );
           const localImports = current.filter((mod) => mod.source === "Local Import");
 
-          return applyEnabledTokensToMods(
+          return dedupeMods(applyEnabledTokensToMods(
             [...serverRootMods, ...workshopMods, ...localImports],
             preferredModTokensRef.current,
-          );
+          ));
         });
 
         appendPreviewLog(
@@ -170,7 +199,7 @@ export function useDayzMods({ dayzApi, appendPreviewLog, preferredModTokensRef }
           (mod) => mod.path.toLowerCase() !== importedMod.path.toLowerCase(),
         );
 
-        return applyEnabledTokensToMods([...withoutDuplicate, importedMod], preferredModTokensRef.current);
+        return dedupeMods(applyEnabledTokensToMods([...withoutDuplicate, importedMod], preferredModTokensRef.current));
       });
 
       appendPreviewLog(`[mods] Imported local mod ${importedMod.name}.`);
@@ -245,7 +274,7 @@ export function useDayzMods({ dayzApi, appendPreviewLog, preferredModTokensRef }
 
       setServerMods((current) => {
         const withoutImported = current.filter((mod) => mod.source !== "Local Import");
-        return applyEnabledTokensToMods([...withoutImported, ...mods], enabledPaths);
+        return dedupeMods(applyEnabledTokensToMods([...withoutImported, ...mods], enabledPaths));
       });
     },
     [],
@@ -261,7 +290,7 @@ export function useDayzMods({ dayzApi, appendPreviewLog, preferredModTokensRef }
         );
 
         return applyEnabledTokensToMods(
-          [...mods, ...dedupedImportedLocalMods],
+          dedupeMods([...mods, ...dedupedImportedLocalMods]),
           preferredModTokensRef.current,
         );
       });
@@ -317,7 +346,7 @@ export function useDayzMods({ dayzApi, appendPreviewLog, preferredModTokensRef }
       return;
     }
 
-    setServerMods((current) => applyEnabledTokensToMods(current, preset.enabledModPaths));
+    setServerMods((current) => dedupeMods(applyEnabledTokensToMods(current, preset.enabledModPaths)));
     setModPresetNameInput(preset.name);
     appendPreviewLog(`[mods] Loaded mod preset ${preset.name}.`);
   }, [appendPreviewLog, modPresets, selectedModPresetId]);

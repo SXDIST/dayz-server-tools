@@ -1,36 +1,61 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DayZ Tools Launcher
 
-## Getting Started
+Electron desktop launcher for DayZ server workflows, local mod management, crash analysis and init generation.
 
-First, run the development server:
+## Development
+
+Install dependencies and start the desktop app:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Useful commands:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run dev:web
+npm run build
+npm run build:desktop
+npm run build:desktop:dir
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Runtime Architecture
 
-## Learn More
+- Renderer: Next.js 16 App Router, exported as static assets.
+- Desktop shell: Electron `main` + `preload`.
+- Backend logic: `backend/node/dayz-backend.cjs`.
 
-To learn more about Next.js, take a look at the following resources:
+The previous desktop wrapper has been removed. That layer only proxied window controls, file dialogs and RPC calls into the Node backend, so the bridge now lives directly in Electron.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Linux and Proton
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+DayZ, DayZ Server, DASE and DASE Tools are Windows-first binaries. On Linux, the launcher assumes they run through Proton rather than natively.
 
-## Deploy on Vercel
+Implemented behavior:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- DayZ client auto-detection searches Steam libraries on Linux for the Windows game executable.
+- DayZ Server auto-detection searches Steam libraries for `DayZServer_x64.exe` / `DayZServer.exe`.
+- Client and server launches use Proton automatically on Linux.
+- Client config and crash-log locations resolve through the DayZ Proton prefix instead of native Linux `Documents` / `%LOCALAPPDATA%`.
+- File/folder opening uses Electron shell integration instead of Windows-only `explorer.exe`.
+- Process shutdown avoids `taskkill` on Linux and terminates the tracked Proton process tree.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Optional environment overrides:
+
+```bash
+DAYZ_TOOLS_PROTON_BINARY=/path/to/proton
+DAYZ_TOOLS_DAYZ_COMPAT_DATA=/path/to/steamapps/compatdata/221100
+DAYZ_TOOLS_DAYZ_SERVER_COMPAT_DATA=/path/to/steamapps/compatdata/223350
+```
+
+Use these if Steam or Proton is installed in a non-standard location.
+
+## Packaging
+
+`npm run build:desktop` builds the exported renderer and packages Electron with `electron-builder`.
+
+Configured targets:
+
+- Linux: `AppImage`, `dir`
+- Windows: `nsis`, `dir`

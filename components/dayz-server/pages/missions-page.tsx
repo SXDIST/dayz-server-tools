@@ -24,7 +24,6 @@ type MissionsPageProps = Pick<
   | "onSaveInitLoadoutPreset"
   | "onLoadInitLoadoutPreset"
   | "onDeleteInitLoadoutPreset"
-  | "onGenerateInitPreview"
   | "onBackupGeneratedInit"
   | "onApplyGeneratedInit"
   | "initPreviewResult"
@@ -136,11 +135,9 @@ export function MissionsPage(props: MissionsPageProps) {
           onSavePreset={props.onSaveInitLoadoutPreset}
           onLoadPreset={props.onLoadInitLoadoutPreset}
           onDeletePreset={props.onDeleteInitLoadoutPreset}
-          onGeneratePreview={props.onGenerateInitPreview}
           onBackup={props.onBackupGeneratedInit}
           onApply={props.onApplyGeneratedInit}
           previewResult={props.initPreviewResult}
-          isPreviewPending={props.isInitPreviewPending}
           isBackupPending={props.isInitBackupPending}
           isApplyPending={props.isInitApplyPending}
         />

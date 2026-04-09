@@ -136,11 +136,9 @@ type InitGeneratorPanelProps = {
   onSavePreset: () => void;
   onLoadPreset: () => void;
   onDeletePreset: () => void;
-  onGeneratePreview: () => Promise<void>;
   onBackup: () => Promise<void>;
   onApply: () => Promise<void>;
   previewResult: DayzInitPreviewResult | null;
-  isPreviewPending: boolean;
   isBackupPending: boolean;
   isApplyPending: boolean;
 };
@@ -155,7 +153,11 @@ export function InitGeneratorPanel({
   onSavePreset,
   onLoadPreset,
   onDeletePreset,
+  onBackup,
+  onApply,
   previewResult,
+  isBackupPending,
+  isApplyPending,
 }: InitGeneratorPanelProps) {
   const isRandomWeather = initGeneratorState.weather.mode === "random";
   const isFixedSpawn = initGeneratorState.spawn.mode === "fixed";
@@ -496,22 +498,51 @@ export function InitGeneratorPanel({
           tone="default"
           className="flex h-full flex-col"
         >
-          <div className="flex flex-wrap gap-2">
-            {previewResult ? (
-              <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap gap-2">
+              {previewResult ? (
+                <>
+                  <span className="rounded-lg border border-border/60 bg-background/40 px-2.5 py-1 text-xs text-muted-foreground">
+                    {previewResult.mode}
+                  </span>
+                  <span className="rounded-lg border border-border/60 bg-background/40 px-2.5 py-1 text-xs text-muted-foreground">
+                    {previewResult.hasExistingInit ? "Existing init.c" : "New init.c"}
+                  </span>
+                  <span
+                    className={cn(
+                      "rounded-lg border px-2.5 py-1 text-xs",
+                      previewResult.isMissionWritable
+                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                        : "border-rose-500/30 bg-rose-500/10 text-rose-300",
+                    )}
+                  >
+                    {previewResult.isMissionWritable ? "Mission Writable" : "Mission Read-Only"}
+                  </span>
+                </>
+              ) : (
                 <span className="rounded-lg border border-border/60 bg-background/40 px-2.5 py-1 text-xs text-muted-foreground">
-                  {previewResult.mode}
+                  Waiting for preview
                 </span>
-                <span className="rounded-lg border border-border/60 bg-background/40 px-2.5 py-1 text-xs text-muted-foreground">
-                  {previewResult.hasExistingInit ? "Existing init.c" : "New init.c"}
-                </span>
-              </>
-            ) : (
-              <span className="rounded-lg border border-border/60 bg-background/40 px-2.5 py-1 text-xs text-muted-foreground">
-                Waiting for preview
-              </span>
-            )}
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => void onBackup()} disabled={isBackupPending}>
+                {isBackupPending ? "Backing Up..." : "Backup init.c"}
+              </Button>
+              <Button onClick={() => void onApply()} disabled={isApplyPending}>
+                {isApplyPending ? "Applying..." : "Apply init.c"}
+              </Button>
+            </div>
           </div>
+          {previewResult ? (
+            <div className="mt-3 space-y-2 rounded-xl border border-border/60 bg-background/30 px-3 py-2 text-xs text-muted-foreground">
+              <div>Mission Path: {previewResult.missionPath}</div>
+              <div>Init Path: {previewResult.initPath}</div>
+              {!previewResult.isMissionWritable && previewResult.missionWriteError ? (
+                <div className="text-rose-300">Write Error: {previewResult.missionWriteError}</div>
+              ) : null}
+            </div>
+          ) : null}
           <pre className="code-surface h-[calc(100vh-18rem)] min-h-[620px] flex-1 overflow-auto rounded-xl border border-border/60 p-4 font-mono text-xs leading-6 2xl:h-[calc(100vh-14rem)]">
             {previewResult?.preview || "// Generate preview to inspect the final init.c output."}
           </pre>

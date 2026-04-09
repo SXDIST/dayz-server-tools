@@ -1,4 +1,5 @@
 const { spawn } = require("child_process");
+const crypto = require("crypto");
 const fs = require("fs");
 const fsp = require("fs/promises");
 const os = require("os");
@@ -10,6 +11,10 @@ const DAYZ_WORKSPACE_FILE = "dayz-workspace.json";
 const DAYZ_INIT_START_MARKER = "// >>> DAYZ TOOLS INIT GENERATOR BEGIN";
 const DAYZ_INIT_END_MARKER = "// <<< DAYZ TOOLS INIT GENERATOR END";
 const DEFAULT_CHARACTER_CLASS = "SurvivorM_Boris";
+const IS_WINDOWS = process.platform === "win32";
+const IS_LINUX = process.platform === "linux";
+const DAYZ_CLIENT_APP_ID = "221100";
+const DAYZ_SERVER_APP_ID = "223350";
 
 let serverProcess = null;
 let serverRuntime = createRuntimeSnapshot();
@@ -25,17 +30,316 @@ function emitEvent(event, payload) {
   emitMessage({ event, payload });
 }
 
+function pathExistsSync(targetPath) {
+  try {
+    fs.accessSync(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function canonicalizeExistingPath(targetPath) {
+  const normalized = normalizePath(targetPath);
+
+  if (!normalized || !pathExistsSync(normalized)) {
+    return normalized;
+  }
+
+  try {
+    return normalizePath(fs.realpathSync.native(normalized));
+  } catch {
+    return normalized;
+  }
+}
+
+function addUniquePath(targetSet, value) {
+  const normalized = canonicalizeExistingPath(value);
+  if (normalized) {
+    targetSet.add(normalized);
+  }
+}
+
+function getSteamRootCandidates() {
+  const candidates = new Set();
+  const homeDir = os.homedir();
+
+  addUniquePath(candidates, process.env.STEAM_DIR);
+  addUniquePath(candidates, path.join(homeDir, ".steam", "steam"));
+  addUniquePath(candidates, path.join(homeDir, ".local", "share", "Steam"));
+  addUniquePath(candidates, path.join(homeDir, ".var", "app", "com.valvesoftware.Steam", ".local", "share", "Steam"));
+
+  return [...candidates].filter(pathExistsSync);
+}
+
+function parseSteamLibraryFolders(raw) {
+  const libraries = new Set();
+  const matches = raw.matchAll(/"\d+"\s+"([^"]+)"/g);
+
+  for (const match of matches) {
+    const candidate = match[1]?.replaceAll("\\\\", "\\");
+    if (candidate) {
+      addUniquePath(libraries, candidate);
+    }
+  }
+
+  return [...libraries];
+}
+
+function getSteamLibraryRoots() {
+  const libraries = new Set();
+  const steamRoots = getSteamRootCandidates();
+
+  for (const steamRoot of steamRoots) {
+    addUniquePath(libraries, steamRoot);
+
+    const libraryFoldersPath = path.join(steamRoot, "steamapps", "libraryfolders.vdf");
+    if (!pathExistsSync(libraryFoldersPath)) {
+      continue;
+    }
+
+    try {
+      const raw = fs.readFileSync(libraryFoldersPath, "utf8");
+      for (const library of parseSteamLibraryFolders(raw)) {
+        addUniquePath(libraries, library);
+      }
+    } catch {}
+  }
+
+  return [...libraries];
+}
+
+function inferSteamLibraryRootFromPath(targetPath) {
+  const normalized = normalizePath(targetPath);
+  const marker = `${path.sep}steamapps${path.sep}`;
+  const markerIndex = normalized.toLowerCase().indexOf(marker.toLowerCase());
+
+  if (markerIndex === -1) {
+    return "";
+  }
+
+  return normalized.slice(0, markerIndex);
+}
+
+function findSteamCommonExecutable(relativeParts) {
+  for (const libraryRoot of getSteamLibraryRoots()) {
+    const candidate = path.join(libraryRoot, "steamapps", "common", ...relativeParts);
+    if (pathExistsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function resolveCompatDataPath(appId, targetPath = "") {
+  const envName =
+    appId === DAYZ_CLIENT_APP_ID
+      ? "DAYZ_TOOLS_DAYZ_COMPAT_DATA"
+      : appId === DAYZ_SERVER_APP_ID
+        ? "DAYZ_TOOLS_DAYZ_SERVER_COMPAT_DATA"
+        : "DAYZ_TOOLS_COMPAT_DATA";
+  const override = normalizePath(process.env[envName]);
+
+  if (override) {
+    return override;
+  }
+
+  const preferredLibrary = inferSteamLibraryRootFromPath(targetPath);
+  const libraryRoots = preferredLibrary
+    ? [preferredLibrary, ...getSteamLibraryRoots().filter((entry) => entry !== preferredLibrary)]
+    : getSteamLibraryRoots();
+
+  for (const libraryRoot of libraryRoots) {
+    const candidate = path.join(libraryRoot, "steamapps", "compatdata", appId);
+    if (pathExistsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return libraryRoots[0]
+    ? path.join(libraryRoots[0], "steamapps", "compatdata", appId)
+    : "";
+}
+
+function resolveProtonBinary() {
+  const override = normalizePath(process.env.DAYZ_TOOLS_PROTON_BINARY);
+  if (override && pathExistsSync(override)) {
+    return override;
+  }
+
+  const candidates = [];
+  for (const steamRoot of getSteamRootCandidates()) {
+    const commonRoot = path.join(steamRoot, "steamapps", "common");
+    const compatibilityRoot = path.join(steamRoot, "compatibilitytools.d");
+
+    for (const root of [commonRoot, compatibilityRoot]) {
+      if (!pathExistsSync(root)) {
+        continue;
+      }
+
+      try {
+        for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+          if (!entry.isDirectory()) {
+            continue;
+          }
+
+          const candidate = path.join(root, entry.name, "proton");
+          if (pathExistsSync(candidate)) {
+            candidates.push(candidate);
+          }
+        }
+      } catch {}
+    }
+  }
+
+  return candidates.sort((left, right) => right.localeCompare(left, "en"))[0] || null;
+}
+
+function resolveWindowsUserHome(appId) {
+  const compatDataPath = resolveCompatDataPath(appId);
+  const fallbackHome = os.homedir();
+
+  if (!compatDataPath) {
+    return fallbackHome;
+  }
+
+  const userCandidates = [
+    path.join(compatDataPath, "pfx", "drive_c", "users", "steamuser"),
+    path.join(compatDataPath, "pfx", "drive_c", "users", "deck"),
+    path.join(compatDataPath, "pfx", "drive_c", "users", process.env.USER || ""),
+  ];
+
+  return userCandidates.find(pathExistsSync) || fallbackHome;
+}
+
+function buildExecutableLaunch(executablePath, args = [], options = {}) {
+  const cwd = normalizePath(options.cwd) || path.dirname(executablePath);
+  const env = {
+    ...process.env,
+    ...(options.env ?? {}),
+  };
+  const isWindowsExecutable = executablePath.toLowerCase().endsWith(".exe");
+
+  if (IS_WINDOWS) {
+    return {
+      command: executablePath,
+      args,
+      cwd,
+      env,
+      detached: false,
+      windowsHide: options.windowsHide !== false,
+      stdio: options.stdio ?? "ignore",
+    };
+  }
+
+  if (!isWindowsExecutable) {
+    return {
+      command: executablePath,
+      args,
+      cwd,
+      env,
+      detached: true,
+      windowsHide: false,
+      stdio: options.stdio ?? "ignore",
+    };
+  }
+
+  const protonBinary = resolveProtonBinary();
+  if (!protonBinary) {
+    throw new Error(
+      "Proton executable was not found. Install Proton in Steam or set DAYZ_TOOLS_PROTON_BINARY.",
+    );
+  }
+
+  const appId = options.appId || DAYZ_CLIENT_APP_ID;
+  const compatDataPath = resolveCompatDataPath(appId, executablePath);
+  const steamLibraryRoot = inferSteamLibraryRootFromPath(executablePath);
+
+  if (compatDataPath) {
+    env.STEAM_COMPAT_DATA_PATH = compatDataPath;
+    env.WINEPREFIX = path.join(compatDataPath, "pfx");
+  }
+
+  if (steamLibraryRoot) {
+    env.STEAM_COMPAT_CLIENT_INSTALL_PATH = steamLibraryRoot;
+  }
+
+  env.SteamAppId = env.SteamAppId || appId;
+  env.SteamGameId = env.SteamGameId || appId;
+  env.WINEDEBUG = env.WINEDEBUG || "-all";
+
+  return {
+    command: protonBinary,
+    args: ["run", executablePath, ...args],
+    cwd,
+    env,
+    detached: true,
+    windowsHide: false,
+    stdio: options.stdio ?? "ignore",
+  };
+}
+
+async function stopTrackedProcess(processHandle) {
+  if (!processHandle || processHandle.killed || processHandle.exitCode !== null) {
+    return;
+  }
+
+  if (IS_WINDOWS) {
+    await new Promise((resolve, reject) => {
+      const killer = spawn("taskkill", ["/pid", String(processHandle.pid), "/t", "/f"], {
+        windowsHide: true,
+        stdio: "ignore",
+      });
+
+      killer.on("error", reject);
+      killer.on("exit", () => resolve());
+    });
+    return;
+  }
+
+  try {
+    process.kill(-processHandle.pid, "SIGKILL");
+    return;
+  } catch {}
+
+  try {
+    processHandle.kill("SIGKILL");
+  } catch {}
+}
+
 function getDocumentsPath() {
-  return path.join(os.homedir(), "Documents");
+  if (IS_WINDOWS) {
+    return path.join(os.homedir(), "Documents");
+  }
+
+  const userHome = resolveWindowsUserHome(DAYZ_CLIENT_APP_ID);
+  const candidates = [
+    path.join(userHome, "Documents"),
+    path.join(userHome, "My Documents"),
+  ];
+
+  return candidates.find(pathExistsSync) || candidates[0];
 }
 
 function getLocalAppDataPath() {
-  return process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+  if (IS_WINDOWS) {
+    return process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+  }
+
+  return path.join(resolveWindowsUserHome(DAYZ_CLIENT_APP_ID), "AppData", "Local");
 }
 
 function getUserDataPath() {
+  if (IS_WINDOWS) {
+    return path.join(
+      process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
+      "dayz-tools",
+    );
+  }
+
   return path.join(
-    process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
+    process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"),
     "dayz-tools",
   );
 }
@@ -204,6 +508,122 @@ function normalizePath(value) {
   return path.normalize(value);
 }
 
+function createStablePathHash(value) {
+  return crypto.createHash("sha1").update(normalizePath(value).toLowerCase()).digest("hex").slice(0, 12);
+}
+
+function toWinePath(targetPath) {
+  const normalized = normalizePath(targetPath);
+  if (!normalized) {
+    return "";
+  }
+
+  return `Z:${normalized.replaceAll("/", "\\")}`;
+}
+
+function sanitizeModAliasName(targetPath) {
+  const baseName = path.basename(normalizePath(targetPath)) || "mod";
+  const sanitized = baseName
+    .replace(/[^a-zA-Z0-9@._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const withPrefix = sanitized.startsWith("@") ? sanitized : `@${sanitized}`;
+  return withPrefix || `@mod-${createStablePathHash(targetPath).slice(0, 6)}`;
+}
+
+async function resolvePreferredModAliasName(modPath) {
+  const normalizedModPath = normalizePath(modPath);
+
+  if (!normalizedModPath) {
+    return sanitizeModAliasName(modPath);
+  }
+
+  const folderName = path.basename(normalizedModPath);
+  const [modCpp, metaCpp] = await Promise.all([
+    readOptionalFile(path.join(normalizedModPath, "mod.cpp")),
+    readOptionalFile(path.join(normalizedModPath, "meta.cpp")),
+  ]);
+  const modData = modCpp ? parseSimpleCfg(modCpp) : {};
+  const metaData = metaCpp ? parseSimpleCfg(metaCpp) : {};
+  const preferredName = pickFirstNonEmpty(metaData.name, modData.name, folderName);
+
+  return sanitizeModAliasName(preferredName || normalizedModPath);
+}
+
+async function prepareLaunchModPaths(serverRoot, modPaths = [], options = {}) {
+  const normalizedServerRoot = normalizePath(serverRoot);
+  const normalizedModPaths = modPaths.map(normalizePath).filter(Boolean);
+  const preferRelativeAliases = options.preferRelativeAliases === true;
+
+  if (!IS_LINUX || !normalizedServerRoot || normalizedModPaths.length === 0) {
+    return normalizedModPaths;
+  }
+
+  const stagingRoot = path.join(normalizedServerRoot, ".dayz-tools-launch-mods");
+  await fsp.mkdir(stagingRoot, { recursive: true });
+
+  const preparedPaths = [];
+  const reservedAliasNames = new Set();
+
+  for (const modPath of normalizedModPaths) {
+    const baseName = path.basename(modPath);
+
+    if (baseName.startsWith("@")) {
+      preparedPaths.push(modPath);
+      continue;
+    }
+
+    const preferredAliasName = await resolvePreferredModAliasName(modPath);
+    const aliasName = reservedAliasNames.has(preferredAliasName)
+      ? `${preferredAliasName}-${createStablePathHash(modPath).slice(0, 6)}`
+      : preferredAliasName;
+    const primaryAliasPath = path.join(normalizedServerRoot, aliasName);
+    const fallbackAliasPath = path.join(stagingRoot, aliasName);
+    let aliasPath = primaryAliasPath;
+    reservedAliasNames.add(aliasName);
+
+    const linkCandidates = [primaryAliasPath, fallbackAliasPath];
+
+    for (const candidatePath of linkCandidates) {
+      try {
+        const existingTarget = await fsp.readlink(candidatePath).catch(() => null);
+        if (existingTarget) {
+          const resolvedExistingTarget = normalizePath(path.resolve(path.dirname(candidatePath), existingTarget));
+          if (resolvedExistingTarget === modPath) {
+            aliasPath = candidatePath;
+            break;
+          }
+
+          await fsp.unlink(candidatePath).catch(() => undefined);
+        } else if (await pathExists(candidatePath)) {
+          if (candidatePath === primaryAliasPath) {
+            continue;
+          }
+
+          await fsp.rm(candidatePath, { recursive: true, force: true }).catch(() => undefined);
+        }
+
+        await fsp.symlink(modPath, candidatePath, "dir");
+        aliasPath = candidatePath;
+        break;
+      } catch {
+        if (candidatePath === fallbackAliasPath) {
+          aliasPath = modPath;
+        }
+      }
+    }
+
+    if (preferRelativeAliases && aliasPath.startsWith(`${normalizedServerRoot}${path.sep}`)) {
+      preparedPaths.push(path.relative(normalizedServerRoot, aliasPath) || path.basename(aliasPath));
+      continue;
+    }
+
+    preparedPaths.push(aliasPath);
+  }
+
+  return preparedPaths;
+}
+
 async function pathExists(targetPath) {
   try {
     await fsp.access(targetPath);
@@ -223,6 +643,7 @@ async function resolveServerExecutable(serverRoot) {
   const candidates = [
     path.join(normalizedRoot, "DayZServer_x64.exe"),
     path.join(normalizedRoot, "DayZServer.exe"),
+    ...(IS_LINUX ? [path.join(normalizedRoot, "DayZServer")] : []),
   ];
 
   for (const candidate of candidates) {
@@ -235,6 +656,11 @@ async function resolveServerExecutable(serverRoot) {
 }
 
 async function resolveClientExecutable() {
+  if (IS_LINUX) {
+    return findSteamCommonExecutable(["DayZ", "DayZ_x64.exe"])
+      || findSteamCommonExecutable(["DayZ", "DayZ.exe"]);
+  }
+
   const candidates = [
     "C:\\Program Files (x86)\\Steam\\steamapps\\common\\DayZ\\DayZ_x64.exe",
     "C:\\Program Files (x86)\\Steam\\steamapps\\common\\DayZ\\DayZ.exe",
@@ -256,6 +682,22 @@ async function resolveClientExecutable() {
 }
 
 async function resolveSteamExecutable() {
+  if (IS_LINUX) {
+    const candidates = [
+      "/usr/bin/steam",
+      "/usr/bin/steam-runtime",
+      "/usr/bin/flatpak",
+    ];
+
+    for (const candidate of candidates) {
+      if (await pathExists(candidate)) {
+        return normalizePath(candidate);
+      }
+    }
+
+    return null;
+  }
+
   const candidates = [
     "C:\\Program Files (x86)\\Steam\\steam.exe",
     "C:\\Program Files\\Steam\\steam.exe",
@@ -279,6 +721,10 @@ async function runBattleyeInstaller(gameRoot) {
   const installerPath = path.join(normalizePath(gameRoot), "BattlEye", "Install_BattlEye.bat");
 
   if (!(await pathExists(installerPath))) {
+    return false;
+  }
+
+  if (!IS_WINDOWS) {
     return false;
   }
 
@@ -400,6 +846,14 @@ async function detectServerPaths(serverRoot) {
 }
 
 async function findAutoDetectedServerRoot() {
+  if (IS_LINUX) {
+    const candidate = findSteamCommonExecutable(["DayZServer", "DayZServer_x64.exe"])
+      || findSteamCommonExecutable(["DayZServer", "DayZServer.exe"])
+      || findSteamCommonExecutable(["DayZServer", "DayZServer"]);
+
+    return candidate ? path.dirname(candidate) : "";
+  }
+
   const candidates = [
     "C:\\Program Files (x86)\\Steam\\steamapps\\common\\DayZServer",
   ];
@@ -588,6 +1042,24 @@ function formatTimestampFilePart() {
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
+function isReadonlyFilesystemError(error) {
+  return Boolean(
+    error
+      && typeof error === "object"
+      && "code" in error
+      && (error.code === "EROFS" || error.code === "EACCES" || error.code === "EPERM"),
+  );
+}
+
+function createMissionWriteError(missionPath, error) {
+  const normalizedMissionPath = normalizePath(missionPath);
+  const detail = error instanceof Error && error.message ? error.message : String(error ?? "unknown error");
+
+  return new Error(
+    `Mission folder is not writable: ${normalizedMissionPath}. DayZ Tools could not write init.c there. Underlying error: ${detail}`,
+  );
+}
+
 function escapeEnforceString(value) {
   return String(value ?? "")
     .replace(/\\/g, "\\\\")
@@ -695,6 +1167,42 @@ async function readMissionInitState(missionPath) {
     hasExistingInit,
     raw,
   };
+}
+
+async function checkMissionWriteAccess(missionPath) {
+  const normalizedMissionPath = normalizePath(missionPath);
+
+  if (!normalizedMissionPath) {
+    return {
+      writable: false,
+      error: "Mission path is empty.",
+    };
+  }
+
+  const probePath = path.join(
+    normalizedMissionPath,
+    `.dayz-tools-write-test-${process.pid}-${Date.now()}.tmp`,
+  );
+
+  try {
+    await fsp.mkdir(normalizedMissionPath, { recursive: true });
+    await fsp.writeFile(probePath, "dayz-tools", "utf8");
+    await fsp.unlink(probePath);
+
+    return {
+      writable: true,
+      error: null,
+    };
+  } catch (error) {
+    try {
+      await fsp.unlink(probePath);
+    } catch {}
+
+    return {
+      writable: false,
+      error: error instanceof Error && error.message ? error.message : String(error ?? "unknown error"),
+    };
+  }
 }
 
 function replaceManagedInitBlock(raw, generatedBlock) {
@@ -1029,6 +1537,7 @@ function generateInitContent(request) {
 async function previewInitGenerator(request) {
   const missionState = await readMissionInitState(request.missionPath);
   const generatedBlock = generateInitContent(request);
+  const writeAccess = await checkMissionWriteAccess(request.missionPath);
 
   return {
     missionPath: missionState.missionPath,
@@ -1037,6 +1546,8 @@ async function previewInitGenerator(request) {
     hasExistingInit: missionState.hasExistingInit,
     usesManagedBlock: false,
     mode: missionState.hasExistingInit ? "full-write" : "create",
+    isMissionWritable: writeAccess.writable,
+    missionWriteError: writeAccess.error,
   };
 }
 
@@ -1054,7 +1565,15 @@ async function backupInitGenerator(request) {
   }
 
   const backupPath = `${initPath}.backup-${formatTimestampFilePart()}`;
-  await fsp.copyFile(initPath, backupPath);
+  try {
+    await fsp.copyFile(initPath, backupPath);
+  } catch (error) {
+    if (isReadonlyFilesystemError(error)) {
+      throw createMissionWriteError(normalizedMissionPath, error);
+    }
+
+    throw error;
+  }
 
   return {
     missionPath: normalizedMissionPath,
@@ -1069,12 +1588,28 @@ async function applyInitGenerator(request) {
 
   if (preview.hasExistingInit) {
     backupPath = `${preview.initPath}.backup-${formatTimestampFilePart()}`;
-    await fsp.copyFile(preview.initPath, backupPath);
+    try {
+      await fsp.copyFile(preview.initPath, backupPath);
+    } catch (error) {
+      if (isReadonlyFilesystemError(error)) {
+        throw createMissionWriteError(preview.missionPath, error);
+      }
+
+      throw error;
+    }
   }
 
-  await fsp.mkdir(path.dirname(preview.initPath), { recursive: true });
-  await fsp.writeFile(preview.initPath, preview.preview, "utf8");
-  await applyMissionSessionSettings(request.missionPath, request.state?.session ?? {});
+  try {
+    await fsp.mkdir(path.dirname(preview.initPath), { recursive: true });
+    await fsp.writeFile(preview.initPath, preview.preview, "utf8");
+    await applyMissionSessionSettings(request.missionPath, request.state?.session ?? {});
+  } catch (error) {
+    if (isReadonlyFilesystemError(error)) {
+      throw createMissionWriteError(preview.missionPath, error);
+    }
+
+    throw error;
+  }
 
   return {
     ...preview,
@@ -1981,13 +2516,13 @@ async function parseDayzMod(modRoot, source, extras = {}) {
   );
 
   return {
-    id: `${source.toLowerCase()}-${folderName.toLowerCase()}`,
+    id: restExtras.id || `${source.toLowerCase()}-${folderName.toLowerCase()}`,
     name: folderName,
     displayName: modData.name || metaData.name || folderName,
     source,
     state: hasAddonsDir ? "Detected" : "Incomplete",
     enabled: false,
-    launchMode: source === "Server Root" ? "serverMod" : "mod",
+    launchMode: "mod",
     path: modRoot,
     hasAddonsDir,
     hasKeysDir,
@@ -2079,13 +2614,19 @@ async function scanDayzServerMods(serverRoot) {
 }
 
 async function resolveWorkshopRoots(serverRoot) {
-  const candidates = new Set([
-    "C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\221100",
-  ]);
+  const candidates = new Set();
 
-  for (let code = 67; code <= 90; code += 1) {
-    const driveLetter = String.fromCharCode(code);
-    candidates.add(`${driveLetter}:\\SteamLibrary\\steamapps\\workshop\\content\\221100`);
+  if (IS_LINUX) {
+    for (const libraryRoot of getSteamLibraryRoots()) {
+      candidates.add(path.join(libraryRoot, "steamapps", "workshop", "content", DAYZ_CLIENT_APP_ID));
+    }
+  } else {
+    candidates.add("C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\221100");
+
+    for (let code = 67; code <= 90; code += 1) {
+      const driveLetter = String.fromCharCode(code);
+      candidates.add(`${driveLetter}:\\SteamLibrary\\steamapps\\workshop\\content\\221100`);
+    }
   }
 
   const normalizedRoot = normalizePath(serverRoot);
@@ -2104,10 +2645,15 @@ async function resolveWorkshopRoots(serverRoot) {
   }
 
   const roots = [];
+  const uniqueRoots = new Set();
 
   for (const candidate of candidates) {
     if (await pathExists(candidate)) {
-      roots.push(normalizePath(candidate));
+      const canonicalCandidate = canonicalizeExistingPath(candidate);
+      if (!uniqueRoots.has(canonicalCandidate)) {
+        uniqueRoots.add(canonicalCandidate);
+        roots.push(canonicalCandidate);
+      }
     }
   }
 
@@ -2186,7 +2732,7 @@ async function scanWorkshopMods(serverRoot) {
         const parsed = await parseDayzMod(modRoot, "Workshop", {
           workshopId: folder.workshopId,
           workshopRoot: folder.root,
-          id: `workshop-${folder.workshopId}-${path.basename(modRoot).toLowerCase()}`,
+          id: `workshop-${folder.workshopId}-${createStablePathHash(modRoot)}`,
           workshopItem,
         });
         mods.push(parsed);
@@ -2214,7 +2760,8 @@ async function inspectModFolder(modRoot) {
 
 function openExternalTarget(target) {
   return new Promise((resolve) => {
-    const child = spawn("explorer.exe", [target], {
+    const command = IS_WINDOWS ? "explorer.exe" : "xdg-open";
+    const child = spawn(command, [target], {
       detached: true,
       stdio: "ignore",
     });
@@ -2400,15 +2947,7 @@ async function killServerProcess() {
   const currentProcess = serverProcess;
   pushServerLog("[launcher] Stopping DayZ Server process...", "info");
 
-  await new Promise((resolve, reject) => {
-    const killer = spawn("taskkill", ["/pid", String(currentProcess.pid), "/t", "/f"], {
-      windowsHide: true,
-      stdio: "ignore",
-    });
-
-    killer.on("error", reject);
-    killer.on("exit", () => resolve());
-  });
+  await stopTrackedProcess(currentProcess);
 
   return serverRuntime;
 }
@@ -2453,15 +2992,7 @@ async function killClientProcess() {
   pushServerLog("[client] Stopping DayZ client process...", "info");
 
   if (trackedProcess && !trackedProcess.killed && trackedProcess.exitCode === null) {
-    await new Promise((resolve, reject) => {
-      const killer = spawn("taskkill", ["/pid", String(trackedProcess.pid), "/t", "/f"], {
-        windowsHide: true,
-        stdio: "ignore",
-      });
-
-      killer.on("error", reject);
-      killer.on("exit", () => resolve());
-    });
+    await stopTrackedProcess(trackedProcess);
   }
 
   await killProcessesByImageNames(imageNames);
@@ -2478,6 +3009,18 @@ async function killClientProcess() {
 
 async function killProcessesByImageNames(imageNames = []) {
   for (const imageName of imageNames.filter(Boolean)) {
+    if (!IS_WINDOWS) {
+      await new Promise((resolve) => {
+        const killer = spawn("pkill", ["-f", imageName], {
+          stdio: "ignore",
+        });
+
+        killer.once("error", () => resolve());
+        killer.once("exit", () => resolve());
+      });
+      continue;
+    }
+
     await new Promise((resolve) => {
       const killer = spawn("taskkill", ["/im", imageName, "/t", "/f"], {
         windowsHide: true,
@@ -2505,15 +3048,23 @@ async function startServer(options = {}) {
   const executablePath = detected.executablePath;
 
   if (!executablePath) {
-    throw new Error("Could not find DayZServer_x64.exe or DayZServer.exe in the selected server root.");
+    throw new Error("Could not find DayZServer_x64.exe, DayZServer.exe, or DayZServer in the selected server root.");
   }
 
   const profilesPath = normalizePath(options.profilesPath) || detected.profiles;
   const battleyePath = normalizePath(options.battleyePath) || detected.battleye;
   const enableBattleye = options.enableBattleye !== false;
   const configPath = normalizePath(options.configPath) || detected.configPath;
-  const mods = Array.isArray(options.mods) ? options.mods.filter(Boolean) : [];
-  const serverModPaths = Array.isArray(options.serverModPaths) ? options.serverModPaths.filter(Boolean) : [];
+  const mods = await prepareLaunchModPaths(serverRoot, Array.isArray(options.mods) ? options.mods : [], {
+    preferRelativeAliases: true,
+  });
+  const serverModPaths = await prepareLaunchModPaths(
+    serverRoot,
+    Array.isArray(options.serverModPaths) ? options.serverModPaths : [],
+    {
+      preferRelativeAliases: true,
+    },
+  );
   const executableName = path.basename(executablePath);
 
   await killProcessesByImageNames([executableName]);
@@ -2558,6 +3109,22 @@ async function startServer(options = {}) {
     "info",
   );
 
+  const launch = buildExecutableLaunch(executablePath, args, {
+    appId: DAYZ_SERVER_APP_ID,
+    cwd: serverRoot,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  if (IS_LINUX && executablePath.toLowerCase().endsWith(".exe")) {
+    pushServerLog(`[launcher] Linux runtime: Proton ${launch.command}`, "info");
+    pushServerLog(
+      `[launcher] Proton prefix: ${launch.env.STEAM_COMPAT_DATA_PATH || "not resolved"}`,
+      "info",
+    );
+  } else if (IS_LINUX) {
+    pushServerLog("[launcher] Linux runtime: native server binary", "info");
+  }
+
   setServerRuntime({
     status: "starting",
     startedAt: new Date().toISOString(),
@@ -2565,10 +3132,12 @@ async function startServer(options = {}) {
     launchArgs: args,
   });
 
-  serverProcess = spawn(executablePath, args, {
-    cwd: serverRoot,
-    windowsHide: true,
-    stdio: ["ignore", "pipe", "pipe"],
+  serverProcess = spawn(launch.command, launch.args, {
+    cwd: launch.cwd,
+    env: launch.env,
+    detached: launch.detached,
+    windowsHide: launch.windowsHide,
+    stdio: launch.stdio,
   });
 
   attachServerProcess(serverProcess);
@@ -2605,7 +3174,10 @@ async function launchDayzClient(options = {}) {
 
   const serverAddress = options.serverAddress || "127.0.0.1";
   const serverPort = String(options.serverPort || 2302);
-  const mods = Array.isArray(options.mods) ? options.mods.filter(Boolean).map(normalizePath) : [];
+  const mods = await prepareLaunchModPaths(
+    options.serverRoot || "",
+    Array.isArray(options.mods) ? options.mods.map(normalizePath) : [],
+  );
   const enableBattleye = options.enableBattleye !== false;
   const displayMode = options.displayMode === "fullscreen" ? "fullscreen" : "windowed";
   const resolutionWidth = Number.parseInt(String(options.resolutionWidth || 0), 10);
@@ -2618,8 +3190,11 @@ async function launchDayzClient(options = {}) {
 
   await killProcessesByImageNames([executableName, "DayZ_x64.exe", "DayZ.exe", "DayZ_BE.exe"]);
 
-  if (mods.length > 0) {
-    dayzArgs.push(`-mod=${mods.join(";")}`);
+  const clientModArgs =
+    IS_LINUX ? mods.map((modPath) => toWinePath(modPath)).filter(Boolean) : mods;
+
+  if (clientModArgs.length > 0) {
+    dayzArgs.push(`-mod=${clientModArgs.join(";")}`);
   }
 
   if (Number.isFinite(resolutionWidth) && resolutionWidth > 0) {
@@ -2643,7 +3218,7 @@ async function launchDayzClient(options = {}) {
     "info",
   );
   pushServerLog(
-    `[client] Mods (${mods.length}): ${mods.length > 0 ? mods.join(";") : "none"}`,
+    `[client] Mods (${clientModArgs.length}): ${clientModArgs.length > 0 ? clientModArgs.join(";") : "none"}`,
     "info",
   );
   pushServerLog(`[client] BattlEye: ${enableBattleye ? "enabled" : "disabled"}`, "info");
@@ -2674,16 +3249,29 @@ async function launchDayzClient(options = {}) {
     const bootstrapArgs = ["-exe", path.basename(executablePath), ...dayzArgs];
     pushServerLog(`[client] Bootstrap executable: ${battleyeExecutablePath}`, "info");
     pushServerLog(`[client] Bootstrap arguments: ${bootstrapArgs.join(" ")}`, "info");
-
-    clientProcess = spawn(battleyeExecutablePath, bootstrapArgs, {
+    const launch = buildExecutableLaunch(battleyeExecutablePath, bootstrapArgs, {
+      appId: DAYZ_CLIENT_APP_ID,
       cwd: executableDir,
-      windowsHide: false,
-      stdio: "ignore",
       env: {
-        ...process.env,
-        SteamAppId: "221100",
-        SteamGameId: "221100",
+        SteamAppId: DAYZ_CLIENT_APP_ID,
+        SteamGameId: DAYZ_CLIENT_APP_ID,
       },
+    });
+
+    if (IS_LINUX) {
+      pushServerLog(`[client] Linux runtime: Proton ${launch.command}`, "info");
+      pushServerLog(
+        `[client] Proton prefix: ${launch.env.STEAM_COMPAT_DATA_PATH || "not resolved"}`,
+        "info",
+      );
+    }
+
+    clientProcess = spawn(launch.command, launch.args, {
+      cwd: launch.cwd,
+      env: launch.env,
+      detached: launch.detached,
+      windowsHide: launch.windowsHide,
+      stdio: launch.stdio,
     });
 
     attachClientProcess(clientProcess, battleyeExecutablePath, bootstrapArgs);
@@ -2701,15 +3289,29 @@ async function launchDayzClient(options = {}) {
     };
   }
 
-  clientProcess = spawn(executablePath, dayzArgs, {
+  const launch = buildExecutableLaunch(executablePath, dayzArgs, {
+    appId: DAYZ_CLIENT_APP_ID,
     cwd: executableDir,
-    windowsHide: false,
-    stdio: "ignore",
     env: {
-      ...process.env,
-      SteamAppId: "221100",
-      SteamGameId: "221100",
+      SteamAppId: DAYZ_CLIENT_APP_ID,
+      SteamGameId: DAYZ_CLIENT_APP_ID,
     },
+  });
+
+  if (IS_LINUX) {
+    pushServerLog(`[client] Linux runtime: Proton ${launch.command}`, "info");
+    pushServerLog(
+      `[client] Proton prefix: ${launch.env.STEAM_COMPAT_DATA_PATH || "not resolved"}`,
+      "info",
+    );
+  }
+
+  clientProcess = spawn(launch.command, launch.args, {
+    cwd: launch.cwd,
+    env: launch.env,
+    detached: launch.detached,
+    windowsHide: launch.windowsHide,
+    stdio: launch.stdio,
   });
 
   pushServerLog(`[client] Direct executable: ${executablePath}`, "info");

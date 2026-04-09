@@ -285,7 +285,7 @@ function ModsList({
         <div className="space-y-3">
           {mods.map((mod) => (
             <ModsListRow
-              key={mod.id}
+              key={`${mod.id}:${mod.path}`}
               mod={mod}
               selected={selectedModId === mod.id}
               onSelect={onSelect}
