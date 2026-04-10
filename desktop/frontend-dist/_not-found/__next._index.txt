@@ -1,0 +1,171 @@
+1:"$Sreact.fragment"
+2:I[79520,["./_next/static/chunks/03a4jm_7-dpof.js","./_next/static/chunks/0dbhjjzl8qfwv.js"],""]
+7:I[39756,["./_next/static/chunks/03a4jm_7-dpof.js","./_next/static/chunks/0dbhjjzl8qfwv.js"],"default"]
+8:I[37457,["./_next/static/chunks/03a4jm_7-dpof.js","./_next/static/chunks/0dbhjjzl8qfwv.js"],"default"]
+:HL["./_next/static/chunks/0_z0hiukt4.tq.css","style"]
+3:Tf94,
+(() => {
+  const getApp = () => window.go?.main?.App;
+  const getRuntime = () => window.runtime;
+  const listenerRegistry = new Map();
+
+  const invoke = (method, ...args) => {
+    const fn = getApp()?.[method];
+
+    if (typeof fn !== "function") {
+      return Promise.reject(new Error("Wails bridge is unavailable."));
+    }
+
+    return fn(...args);
+  };
+
+  const subscribe = (eventName, callback) => {
+    const runtime = getRuntime();
+
+    if (!runtime?.EventsOn || typeof callback !== "function") {
+      return () => {};
+    }
+
+    let entry = listenerRegistry.get(eventName);
+
+    if (!entry) {
+      const callbacks = new Set();
+      const handler = (payload) => {
+        callbacks.forEach((listener) => {
+          try {
+            listener(payload);
+          } catch {}
+        });
+      };
+
+      runtime.EventsOn(eventName, handler);
+      entry = { callbacks, handler };
+      listenerRegistry.set(eventName, entry);
+    }
+
+    entry.callbacks.add(callback);
+
+    return () => {
+      const current = listenerRegistry.get(eventName);
+
+      if (!current) {
+        return;
+      }
+
+      current.callbacks.delete(callback);
+
+      if (current.callbacks.size === 0) {
+        getRuntime()?.EventsOff?.(eventName);
+        listenerRegistry.delete(eventName);
+      }
+    };
+  };
+
+  window.desktopBridge = {
+    platform: navigator.platform || "unknown",
+    get isElectron() {
+      return !!getApp() || !!getRuntime();
+    },
+    app: {
+      minimizeWindow: () => invoke("AppMinimizeWindow"),
+      toggleMaximizeWindow: () => invoke("AppToggleMaximizeWindow"),
+      closeWindow: () => invoke("AppCloseWindow"),
+    },
+    dayz: {
+      pickFolder: (options) => invoke("DayzPickFolder", options || {}),
+      pickExecutable: (options) => invoke("DayzPickExecutable", options || {}),
+      detectClientExecutable: () => invoke("DayzDetectClientExecutable"),
+      detectServerPaths: (serverRoot) => invoke("DayzDetectServerPaths", serverRoot),
+      autoDetectServerPaths: () => invoke("DayzAutoDetectServerPaths"),
+      getServerRuntime: () => invoke("DayzGetServerRuntime"),
+      getClientRuntime: () => invoke("DayzGetClientRuntime"),
+      startServer: (options) => invoke("DayzStartServer", options),
+      stopServer: () => invoke("DayzStopServer"),
+      restartServer: (options) => invoke("DayzRestartServer", options),
+      readServerConfig: (configPath) => invoke("DayzReadServerConfig", configPath),
+      writeServerConfig: (options) => invoke("DayzWriteServerConfig", options),
+      scanMissions: (missionsRoot) => invoke("DayzScanMissions", missionsRoot),
+      readMissionSessionSettings: (missionPath) => invoke("DayzReadMissionSessionSettings", missionPath),
+      previewInitGenerator: (request) => invoke("DayzPreviewInitGenerator", request),
+      backupInitGenerator: (request) => invoke("DayzBackupInitGenerator", request),
+      applyInitGenerator: (request) => invoke("DayzApplyInitGenerator", request),
+      scanMods: (serverRoot) => invoke("DayzScanMods", serverRoot),
+      scanWorkshopMods: (serverRoot) => invoke("DayzScanWorkshopMods", serverRoot),
+      inspectModFolder: (modRoot) => invoke("DayzInspectModFolder", modRoot),
+      deleteMod: (request) => invoke("DayzDeleteMod", request),
+      scanCrashTools: (request) => invoke("DayzScanCrashTools", request || {}),
+      deleteCrashArtifacts: (request) => invoke("DayzDeleteCrashArtifacts", request),
+      openPath: (targetPath) => invoke("DayzOpenPath", targetPath),
+      launchClient: (options) => invoke("DayzLaunchClient", options),
+      stopClient: () => invoke("DayzStopClient"),
+      getWorkspaceState: () => invoke("DayzGetWorkspaceState"),
+      saveWorkspaceState: (state) => invoke("DayzSaveWorkspaceState", state),
+      onServerLog: (callback) => subscribe("dayz:server-log", callback),
+      onServerStatus: (callback) => subscribe("dayz:server-status", callback),
+      onClientStatus: (callback) => subscribe("dayz:client-status", callback),
+    },
+  };
+})();
+0:{"rsc":["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"./_next/static/chunks/0_z0hiukt4.tq.css","precedence":"next"}],["$","script","script-0",{"src":"./_next/static/chunks/03a4jm_7-dpof.js","async":true}],["$","script","script-1",{"src":"./_next/static/chunks/0dbhjjzl8qfwv.js","async":true}]],["$","html",null,{"lang":"en","className":"dark h-full antialiased","style":{"--font-inter":"\"Inter\", \"Segoe UI\", sans-serif","--font-jetbrains-mono":"\"JetBrains Mono\", \"Cascadia Code\", monospace","--font-geist":"\"Geist\", \"Segoe UI\", sans-serif","--font-geist-mono":"\"Geist Mono\", \"JetBrains Mono\", monospace","--font-noto-sans":"\"Noto Sans\", \"Segoe UI\", sans-serif","--font-roboto":"\"Roboto\", \"Segoe UI\", sans-serif"},"suppressHydrationWarning":true,"children":[["$","head",null,{}],["$","body",null,{"className":"min-h-full flex flex-col","children":[["$","$L2",null,{"id":"dayz-desktop-bridge","strategy":"beforeInteractive","children":"$3"}],"$L4","$L5"]}]]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"BvyiWaGJWOLHK-mdAzUGa"}
+6:T7de,
+(() => {
+  try {
+    const storageKey = "dayz-tools.launcher-preferences";
+    const defaults = {
+      themeMode: "dark",
+      interfaceMode: "mono",
+      interfaceSansFont: "inter",
+      interfaceMonoFont: "jetbrains-mono",
+      headingMode: "mono",
+      headingSansFont: "geist",
+      headingMonoFont: "jetbrains-mono",
+    };
+    const raw = window.localStorage.getItem(storageKey);
+    const prefs = raw ? { ...defaults, ...JSON.parse(raw) } : defaults;
+    const root = document.documentElement;
+    window.__DAYZ_LAUNCHER_BOOTSTRAP__ = {
+      preferences: prefs,
+    };
+    const resolveFontVariable = (fontId) => {
+      switch (fontId) {
+        case "inter":
+          return "var(--font-inter)";
+        case "geist":
+          return "var(--font-geist)";
+        case "noto-sans":
+          return "var(--font-noto-sans)";
+        case "roboto":
+          return "var(--font-roboto)";
+        case "geist-mono":
+          return "var(--font-geist-mono)";
+        case "jetbrains-mono":
+        default:
+          return "var(--font-jetbrains-mono)";
+      }
+    };
+    const resolvedTheme =
+      prefs.themeMode === "system"
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light"
+        : prefs.themeMode;
+
+    const interfaceFont =
+      prefs.interfaceMode === "mono"
+        ? resolveFontVariable(prefs.interfaceMonoFont)
+        : resolveFontVariable(prefs.interfaceSansFont);
+    const monoFont = resolveFontVariable(prefs.interfaceMonoFont);
+    const headingFont =
+      prefs.headingMode === "mono"
+        ? resolveFontVariable(prefs.headingMonoFont)
+        : resolveFontVariable(prefs.headingSansFont);
+
+    root.classList.toggle("dark", resolvedTheme === "dark");
+    root.classList.toggle("light", resolvedTheme === "light");
+    root.style.setProperty("--app-font-sans", interfaceFont);
+    root.style.setProperty("--app-font-mono", monoFont);
+    root.style.setProperty("--app-font-heading", headingFont);
+  } catch {}
+})();
+4:["$","$L2",null,{"id":"dayz-launcher-bootstrap","strategy":"beforeInteractive","children":"$6"}]
+5:["$","$L7",null,{"parallelRouterKey":"children","template":["$","$L8",null,{}],"notFound":[[["$","title",null,{"children":"404: This page could not be found."}],["$","div",null,{"style":{"fontFamily":"system-ui,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\"","height":"100vh","textAlign":"center","display":"flex","flexDirection":"column","alignItems":"center","justifyContent":"center"},"children":["$","div",null,{"children":[["$","style",null,{"dangerouslySetInnerHTML":{"__html":"body{color:#000;background:#fff;margin:0}.next-error-h1{border-right:1px solid rgba(0,0,0,.3)}@media (prefers-color-scheme:dark){body{color:#fff;background:#000}.next-error-h1{border-right:1px solid rgba(255,255,255,.3)}}"}}],["$","h1",null,{"className":"next-error-h1","style":{"display":"inline-block","margin":"0 20px 0 0","padding":"0 23px 0 0","fontSize":24,"fontWeight":500,"verticalAlign":"top","lineHeight":"49px"},"children":404}],["$","div",null,{"style":{"display":"inline-block"},"children":["$","h2",null,{"style":{"fontSize":14,"fontWeight":400,"lineHeight":"49px","margin":0},"children":"This page could not be found."}]}]]}]}]],[]]}]

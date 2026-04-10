@@ -757,22 +757,17 @@ function getWorkspaceFilePath() {
   return path.join(getUserDataPath(), DAYZ_WORKSPACE_FILE);
 }
 
-async function readWorkspaceState() {
-  try {
-    const filePath = getWorkspaceFilePath();
-    const raw = await fsp.readFile(filePath, "utf8");
-    return JSON.parse(raw);
-  } catch {
-    return {
-      paths: {},
-      clientPath: "",
-      clientSettings: {
-        displayMode: "windowed",
-        resolution: "1920x1080",
-      },
-      enabledModPaths: [],
-      modPresets: [],
-      selectedModPresetId: "",
+function createDefaultWorkspaceState() {
+  return {
+    paths: {},
+    clientPath: "",
+    clientSettings: {
+      displayMode: "windowed",
+      resolution: "1920x1080",
+    },
+    enabledModPaths: [],
+    modPresets: [],
+    selectedModPresetId: "",
     importedLocalModPaths: [],
     serverConfigValues: {},
     initGeneratorState: createDefaultInitGeneratorState(),
@@ -780,13 +775,68 @@ async function readWorkspaceState() {
     initPresetNameInput: "",
   };
 }
+
+async function sanitizeWorkspaceState(state) {
+  const baseState =
+    state && typeof state === "object"
+      ? {
+          ...createDefaultWorkspaceState(),
+          ...state,
+        }
+      : createDefaultWorkspaceState();
+
+  const importedLocalModPaths = [
+    ...new Set(
+      (Array.isArray(baseState.importedLocalModPaths) ? baseState.importedLocalModPaths : [])
+        .map((entry) => normalizePath(entry))
+        .filter(Boolean),
+    ),
+  ];
+
+  const existingImportedLocalModPaths = [];
+
+  for (const modPath of importedLocalModPaths) {
+    if (await pathExists(modPath)) {
+      existingImportedLocalModPaths.push(modPath);
+    }
+  }
+
+  const removedImportedLocalModPathSet = new Set(
+    importedLocalModPaths
+      .filter((modPath) => !existingImportedLocalModPaths.includes(modPath))
+      .map((modPath) => modPath.toLowerCase()),
+  );
+
+  const enabledModPaths = Array.isArray(baseState.enabledModPaths)
+    ? baseState.enabledModPaths.filter((entry) => {
+        const normalizedEntry = normalizePath(entry);
+        return normalizedEntry && !removedImportedLocalModPathSet.has(normalizedEntry.toLowerCase());
+      })
+    : [];
+
+  return {
+    ...baseState,
+    enabledModPaths,
+    importedLocalModPaths: existingImportedLocalModPaths,
+  };
+}
+
+async function readWorkspaceState() {
+  try {
+    const filePath = getWorkspaceFilePath();
+    const raw = await fsp.readFile(filePath, "utf8");
+    return await sanitizeWorkspaceState(JSON.parse(raw));
+  } catch {
+    return createDefaultWorkspaceState();
+  }
 }
 
 async function saveWorkspaceState(state) {
   const filePath = getWorkspaceFilePath();
+  const sanitizedState = await sanitizeWorkspaceState(state);
   await fsp.mkdir(path.dirname(filePath), { recursive: true });
-  await fsp.writeFile(filePath, JSON.stringify(state, null, 2), "utf8");
-  return state;
+  await fsp.writeFile(filePath, JSON.stringify(sanitizedState, null, 2), "utf8");
+  return sanitizedState;
 }
 
 async function resolveConfigPath(serverRoot) {

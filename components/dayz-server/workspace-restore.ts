@@ -124,8 +124,9 @@ export async function restoreDayzWorkspace({
   hydrateModPresets(restoredModPresets, restoredSelectedModPresetId);
 
   if (importedLocalModPaths.length > 0) {
+    const uniqueImportedLocalModPaths = [...new Set(importedLocalModPaths.map((modPath) => modPath.trim()).filter(Boolean))];
     const importedResults = await Promise.allSettled(
-      importedLocalModPaths.map((modPath) => dayzApi.inspectModFolder(modPath)),
+      uniqueImportedLocalModPaths.map((modPath) => dayzApi.inspectModFolder(modPath)),
     );
 
     if (!isMounted()) {
